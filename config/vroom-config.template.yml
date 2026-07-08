@@ -1,0 +1,23 @@
+# vroom-express config template — per-zone config.yml is generated at runtime.
+# Tokens {{OSRM_PORT}} / {{VROOM_PORT}} are substituted by the supervisor.
+cliArgs:
+  geometry: false
+  planmode: false
+  threads: 4
+  explore: 5
+  limit: '1mb'
+  logdir: '/tmp/vroom-logs'
+  logsize: '100M'
+  maxlocations: 1000
+  maxvehicles: 200
+  override: true
+  path: ''
+  port: {{VROOM_PORT}}
+  router: 'osrm'
+  timeout: 300000
+  baseurl: '/'
+routingServers:
+  osrm:
+    car:
+      host: '127.0.0.1'
+      port: '{{OSRM_PORT}}'
