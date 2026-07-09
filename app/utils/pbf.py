@@ -35,7 +35,7 @@ async def ensure_base_pbf() -> str:
     log.info("downloading base PBF from %s → %s", url, pbf)
 
     try:
-        async with httpx.AsyncClient(timeout=1200) as client:
+        async with httpx.AsyncClient(timeout=1200, follow_redirects=True) as client:
             async with client.stream("GET", url) as resp:
                 resp.raise_for_status()
                 total = resp.headers.get("content-length")
