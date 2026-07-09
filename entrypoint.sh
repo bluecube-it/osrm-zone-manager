@@ -4,7 +4,7 @@ set -e
 # osrm-zone-manager entrypoint
 # Boot order:
 #   1. ensure /data layout
-#   2. ensure base PBF exists (download if missing — delegated to a util)
+#   2. ensure base PBF exists (download via orchestrator lifespan, fail-fast)
 #   3. start embedded redis (persistence on /data/redis)
 #   4. start uvicorn (orchestrator: FastAPI on :8080)
 #   uvicorn handles boot recovery + evictor worker + builder via app startup hooks
@@ -31,12 +31,10 @@ echo "ZONE_TTL_DAYS=${ZONE_TTL_DAYS}"
 echo "MAX_ACTIVE_ZONES=${MAX_ACTIVE_ZONES}"
 echo "OSRM_DEFAULT_RADIUS=${OSRM_DEFAULT_RADIUS}"
 
-# --- 1. Base PBF (download delegated to util on first need; here just warn) ---
-if [ ! -f "${BASE_PBF}" ]; then
-    echo "WARN: base PBF not found at ${BASE_PBF}."
-    echo "      Set GEOFABRIK_URL and the orchestrator will fetch it on first /zones POST."
-    echo "      Or mount it manually."
-fi
+# --- 1. Base PBF (download delegated to orchestrator at boot, fail-fast if missing) ---
+# app/main.py lifespan calls ensure_base_pbf() before recover_zones().
+# If GEOFABRIK_URL is reachable the download happens there; on failure uvicorn exits.
+# To pre-mount instead: bind a volume at ${BASE_PBF} (e.g. /data/base/italy.osm.pbf).
 
 # --- 2. Start embedded redis ---
 echo "=== starting redis on ${REDIS_HOST}:${REDIS_PORT} (persistence: ${REDIS_DIR}) ==="

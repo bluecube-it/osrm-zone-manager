@@ -44,10 +44,13 @@ async def ensure_base_pbf() -> str:
                     async for chunk in resp.aiter_bytes(chunk_size=1_048_576):
                         f.write(chunk)
                         downloaded += len(chunk)
-                        pct = (downloaded / int(total)) * 100 if total else "??"
-                        sys.stdout.write(f"\r  {downloaded / 1e6:.1f} MB / "
-                                         f"{int(total)/1e6:.1f} MB ({pct:.0f}%)"
-                                         f"  ")
+                        if total:
+                            total_mb = int(total) / 1e6
+                            pct = (downloaded / int(total)) * 100
+                            sys.stdout.write(f"\r  {downloaded / 1e6:.1f} MB / "
+                                             f"{total_mb:.1f} MB ({pct:.0f}%)  ")
+                        else:
+                            sys.stdout.write(f"\r  {downloaded / 1e6:.1f} MB  ")
                         sys.stdout.flush()
         sys.stdout.write("\n")
     except httpx.HTTPError as exc:

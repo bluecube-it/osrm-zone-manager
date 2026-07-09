@@ -20,6 +20,10 @@ async def lifespan(app: FastAPI):
     log.info("boot: osrm-zone-manager starting")
     log.info("boot: DATA_DIR=%s BASE_PBF=%s", config.data_dir, config.base_pbf)
 
+    # ensure base PBF (download from geofabrik if missing) — fail fast
+    from app.utils.pbf import ensure_base_pbf
+    await ensure_base_pbf()
+
     # boot recovery (Fase 10) — imported lazily to avoid circulars
     from app.runtime.boot import recover_zones
     await recover_zones()
