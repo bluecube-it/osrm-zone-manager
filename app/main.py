@@ -5,6 +5,7 @@ Endpoints and proxy logic are wired here, implemented in app.api.*.
 """
 
 from contextlib import asynccontextmanager
+import asyncio
 
 from fastapi import FastAPI
 
@@ -36,6 +37,15 @@ async def lifespan(app: FastAPI):
 
     log.info("shutdown: stopping evictor")
     task.cancel()
+    # Flush pending last_access updates to disk
+    from app.runtime.redis_client import _flush_touch, _touch_flush_task
+    if _touch_flush_task and not _touch_flush_task.done():
+        _touch_flush_task.cancel()
+        try:
+            await _touch_flush_task
+        except asyncio.CancelledError:
+            pass
+    await _flush_touch()
     # stop all zone subprocesses (Fase 5)
     from app.runtime.supervisor import stop_all_zones
     await stop_all_zones()

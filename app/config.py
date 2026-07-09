@@ -11,9 +11,6 @@ class Config:
     geofabrik_url: str = field(default_factory=lambda: os.getenv(
         "GEOFABRIK_URL", "https://download.geofabrik.de/europe/italy-latest.osm.pbf"
     ))
-    redis_host: str = field(default_factory=lambda: os.getenv("REDIS_HOST", "127.0.0.1"))
-    redis_port: int = field(default_factory=lambda: int(os.getenv("REDIS_PORT", "6379")))
-
     car_lua: str = "/opt/car.lua"
     vroom_express_dir: str = "/vroom-express"
 

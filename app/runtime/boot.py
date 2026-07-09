@@ -1,7 +1,7 @@
-"""Boot recovery: read Redis active zones, verify, restart subprocesses.
+"""Boot recovery: read registry active zones, verify, restart subprocesses.
 
-Fase 10 — on container boot:
-- iterate osrm:zones set
+On container boot:
+- iterate registry zones
 - for each: verify files exist, content-hash matches, restart processes
 - partial builds (status=building) resume pipeline
 - stale PBF detection
@@ -11,7 +11,6 @@ import os
 
 from app.config import config
 from app.runtime.redis_client import (
-    get_redis,
     get_zone,
     list_zones,
     set_zone_status,
@@ -23,17 +22,16 @@ log = get_logger(__name__)
 
 
 async def recover_zones() -> None:
-    """Walk Redis, recover zone state, start subprocesses where needed."""
-    r = get_redis()
+    """Walk registry, recover zone state, start subprocesses where needed."""
     zone_ids = await list_zones()
 
     if not zone_ids:
-        log.info("boot recovery: no zones in Redis")
+        log.info("boot recovery: no zones in registry")
         # Health checker may still want to start for zones added after boot
         _ = await start_health_checker()
         return
 
-    log.info("boot recovery: found %d zone(s) in Redis", len(zone_ids))
+    log.info("boot recovery: found %d zone(s) in registry", len(zone_ids))
 
     # Current base PBF mtime for staleness check
     now_mtime = _file_mtime(config.base_pbf) if os.path.isfile(config.base_pbf) else 0
@@ -41,7 +39,7 @@ async def recover_zones() -> None:
     for zid in zone_ids:
         zone = await get_zone(zid)
         if not zone:
-            await set_zone_status(zid, "failed", error="redis record missing")
+            await set_zone_status(zid, "failed", error="registry record missing")
             continue
 
         status = zone.get("status", "failed")
@@ -67,7 +65,7 @@ async def _recover_building(zid: str, zone: dict, current_pbf_mtime: float) -> N
         zid, "failed",
         error="building at shutdown — polygon not stored, manual rebuild required"
     )
-    log.warning("boot recovery: zone %s building at shutdown — cannot resume (polygon not in Redis)", zid)
+    log.warning("boot recovery: zone %s building at shutdown — cannot resume (polygon not in registry)", zid)
 
 
 async def _recover_active(zid: str, zone: dict, current_pbf_mtime: float) -> None:
@@ -112,7 +110,7 @@ async def _recover_active(zid: str, zone: dict, current_pbf_mtime: float) -> Non
         if actual_poly_hash != polygon_hash:
             log.warning(
                 "boot recovery: zone %s: polygon hash mismatch "
-                "(redis=%s disk=%s) — mark failed", zid, polygon_hash[:12], actual_poly_hash[:12]
+                "(registry=%s disk=%s) — mark failed", zid, polygon_hash[:12], actual_poly_hash[:12]
             )
             await set_zone_status(zid, "failed", error="content-hash mismatch")
             return
@@ -127,7 +125,6 @@ async def _recover_active(zid: str, zone: dict, current_pbf_mtime: float) -> Non
             )
             await set_zone_status(zid, "failed", error="content-hash mismatch")
             return
-
     # ── 3. start subprocesses ──────────────────────────────────────
     try:
         await start_zone(zid)

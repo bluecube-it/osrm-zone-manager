@@ -1,8 +1,7 @@
-"""Evictor: background async task scanning Redis for expired zones.
+"""Evictor: background async task scanning registry for expired zones.
 
-Fase 9 — TTL-based zone cleanup.
-Skips `building` zones, uses per-zone file lock (Redis SETNX),
-stops subprocesses + cleans disk + removes Redis record.
+TTL-based zone cleanup. Skips `building` zones, uses per-zone in-memory lock,
+stops subprocesses + cleans disk + removes registry record.
 """
 
 import asyncio
@@ -11,9 +10,7 @@ from datetime import datetime, timezone, timedelta
 from app.config import config
 from app.runtime.redis_client import (
     delete_zone_record,
-    get_redis,
     set_zone_status,
-    release_port,
     get_zone,
     list_zones,
 )
@@ -22,56 +19,63 @@ from app.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-LOCK_PREFIX = "osrm:lock"
+# Per-zone in-memory lock — replaces Redis SETNX. concurrency=1 / workers=1.
+_locks: dict = {}
+
+
+def _get_lock(zone_id: str) -> asyncio.Lock:
+    """Get or create the in-memory lock for a zone."""
+    lock = _locks.get(zone_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[zone_id] = lock
+    return lock
 
 
 async def _evictor_loop() -> None:
     interval = config.evictor_interval_minutes * 60
-    r = get_redis()
 
     while True:
         try:
-            await _evict_tick(r)
+            await _evict_tick()
         except Exception as exc:
             log.error("evictor error: %s", exc)
         await asyncio.sleep(interval)
 
 
-async def _evict_tick(r) -> None:
+async def _evict_tick() -> None:
     """One evictor scan pass."""
-    zone_ids = await r.smembers("osrm:zones")
+    zone_ids = await list_zones()
     now = datetime.now(timezone.utc)
     ttl = timedelta(days=config.zone_ttl_days)
 
     for zid in zone_ids:
-        # Acquire per-zone lock (60s expiry, avoids race with supervisor)
-        lock_key = f"{LOCK_PREFIX}:{zid}"
-        locked = await r.set(lock_key, "1", ex=60, nx=True)
-        if not locked:
-            log.debug("evictor: zone %s locked by supervisor — skip", zid)
+        lock = _get_lock(zid)
+        if lock.locked():
+            log.debug("evictor: zone %s locked — skip", zid)
             continue
-
-        try:
+        async with lock:
             zone = await get_zone(zid)
             if not zone:
+                _locks.pop(zid, None)
                 continue
 
             status = zone.get("status", "")
             if status == "active":
-                # Parse last_access and check TTL
                 last_access_str = zone.get("last_access", "")
                 if not last_access_str:
+                    _locks.pop(zid, None)
                     continue
                 try:
                     last_access = datetime.fromisoformat(last_access_str)
                 except (ValueError, TypeError):
+                    _locks.pop(zid, None)
                     continue
 
                 if now - last_access > ttl:
                     await _evict_zone(zid)
-        finally:
-            # Release lock
-            await r.delete(lock_key)
+
+            _locks.pop(zid, None)
 
 
 async def _evict_zone(zone_id: str) -> None:
@@ -91,7 +95,7 @@ async def _evict_zone(zone_id: str) -> None:
     if os.path.isdir(zone_dir):
         shutil.rmtree(zone_dir, ignore_errors=True)
 
-    # Remove stale Redis record + release ports
+    # Remove registry record + release ports (implicit)
     await delete_zone_record(zone_id)
 
     log.info("evictor: zone %s evicted", zone_id)

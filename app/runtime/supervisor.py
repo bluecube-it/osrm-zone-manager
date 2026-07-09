@@ -9,10 +9,13 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional, Set
 
-from app.runtime.redis_client import delete_zone_record
-
 from app.config import config
-from app.runtime.redis_client import get_redis, release_port, set_zone_status
+from app.runtime.redis_client import (
+    get_zone,
+    release_port,
+    set_zone_status,
+    update_zone_fields,
+)
 from app.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -38,11 +41,10 @@ _health_checker_task: Optional[asyncio.Task] = None
 async def start_zone(zone_id: str) -> None:
     """Start osrm-routed + vroom-express for zone_id.
 
-    Reads osrm/vroom ports from Redis; assumes zone is "active".
+    Reads osrm/vroom ports from registry; assumes zone is "active".
     Allocates ports only during build, not during recovery.
     """
-    r = get_redis()
-    zone = await r.hgetall(f"osrm:zones:{zone_id}")
+    zone = await get_zone(zone_id)
 
     if zone_id in _registry:
         log.info("zone %s: already started, skipping", zone_id)
@@ -58,7 +60,7 @@ async def start_zone(zone_id: str) -> None:
     await _start_vroom(proc, zone_id, osrm_port, vroom_port)
 
     if proc.healthy:
-        await r.hset(f"osrm:zones:{zone_id}", mapping={
+        await update_zone_fields(zone_id, {
             "osrm_port": str(osrm_port),
             "vroom_port": str(vroom_port),
             "osrm_pid": str(proc.osrm_pid),
@@ -79,7 +81,7 @@ async def start_zone(zone_id: str) -> None:
 
 
 async def stop_zone(zone_id: str) -> None:
-    """Kill subprocesses, release ports. Does NOT delete Redis record."""
+    """Kill subprocesses, release ports. Does NOT delete registry record."""
     proc = _registry.pop(zone_id, None)
     if not proc:
         log.warning("zone %s: stop called but not in registry", zone_id)

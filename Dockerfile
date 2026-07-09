@@ -46,7 +46,7 @@ COPY --from=vroom_node_builder /vroom-express/. /vroom-express
 # Copy osmium-tool binary
 COPY --from=osmium_builder /usr/local/bin/osmium /usr/local/bin/osmium
 
-# Install runtime deps: python (orchestrator) + node (vroom-express) + redis + tools
+# Install runtime deps: python (orchestrator) + node (vroom-express) + tools
 RUN apk --update --no-cache add \
         python3 \
         py3-pip \
@@ -65,7 +65,6 @@ RUN apk --update --no-cache add \
         glpk-dev \
         nodejs \
         npm \
-        redis \
         curl \
         bash \
         file \
@@ -75,7 +74,6 @@ RUN apk --update --no-cache add \
         shapely \
         fastapi \
         uvicorn[standard] \
-        redis \
         httpx \
         polyline && \
     rm -rf /var/cache/apk/*
@@ -86,11 +84,10 @@ COPY config/ /app/config/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# /data is the persistent mount point (host volume)
+# /data is the persistent mount point (GCS FUSE bucket)
 # /data/base/italy.osm.pbf     — source PBF
 # /data/zones/<zone_id>/       — per-zone datasets (.osrm.*, reduced.pbf, polygon.geojson, linestrings.geojson, config.yml)
-# /data/redis/                 — dump.rdb persistence
-# /data/registry.json          — boot recovery mirror
+# /data/registry.json          — zone registry (JSON, atomic write via os.replace)
 VOLUME ["/data"]
 
 EXPOSE 8080

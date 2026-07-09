@@ -43,7 +43,7 @@ First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
 
 Single container:
 - FastAPI (uvicorn) — gateway + radiuses middleware
-- Embedded redis-server — registry + last_access tracking
+- JSON file registry (`/data/registry.json`) — zone registry + last_access tracking
 - Per active zone (subprocesses, NOT containers):
   - `osrm-routed --algorithm mld -i 127.0.0.1 -p 5XXX /data/zones/<id>/map.osrm`
   - `vroom-express` on `3XXX` (config.yml templated per-zone, points at `5XXX`)
@@ -53,7 +53,7 @@ Single container:
 Persistence (`/data` mount):
 - `/data/base/italy.osm.pbf` — source PBF (downloaded once)
 - `/data/zones/<id>/` — `map.osrm.*`, `reduced.pbf`, `polygon.geojson`, `linestrings.geojson`, `config.yml`
-- `/data/redis/dump.rdb` — registry persistence
+- `/data/registry.json` — zone registry (JSON, atomic write via `os.replace` for GCS FUSE compatibility)
 
 ## Versions
 

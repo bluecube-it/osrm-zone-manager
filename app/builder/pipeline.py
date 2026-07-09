@@ -1,7 +1,7 @@
 """Build pipeline: osmium extract → reduce.py → osmium merge → osrm-extract/
 partition/customize + subprocess health-wait.
 
-Fase 4 — async, sequential steps, Redis status tracking.
+Async, sequential steps, JSON registry status tracking.
 """
 
 import asyncio
@@ -14,10 +14,11 @@ from typing import Optional
 from app.config import config
 from app.runtime.redis_client import (
     compute_hashes,
-    get_redis,
+    get_zone,
     register_zone,
     reserve_port_pair,
     set_zone_status,
+    set_zone_last_build,
     release_port,
 )
 from app.utils.logger import get_logger
@@ -88,7 +89,6 @@ async def build_zone(
                                        osrm_port=int(existing["osrm_port"]),
                                        vroom_port=int(existing["vroom_port"]))
         # hashes changed → rebuild below
-
     # ── allocate ports / reuse registration from create_zone ─────────
     existing = await _get_zone_state(zone_id)
     if existing and existing.get("status") == "building":
@@ -101,7 +101,7 @@ async def build_zone(
 
     log.info("zone %s: allocated ports osrm=%d vroom=%d", zone_id, osrm_port, vroom_port)
 
-    # ── register in Redis as building ────────────────────────────────
+    # ── register in registry as building ──────────────────────────────
     if not existing or existing.get("status") != "building":
         try:
             await register_zone(zone_id, osrm_port, vroom_port,
@@ -184,18 +184,14 @@ async def build_zone(
         # ── step 7: write per-zone vroom config ───────────────────────
         await _write_vroom_config(zone_dir, osrm_port, vroom_port)
 
-        # ── update Redis ─────────────────────────────────────────────
+        # ── update registry ───────────────────────────────────────────
         # status="built": files ready but subprocesses not yet started.
         # _start_after_build (zones.py) will transition to "active".
         await set_zone_status(
             zone_id, "built",
             error=None,
         )
-        r = get_redis()
-        await r.hset(f"osrm:zones:{zone_id}", mapping={
-            "last_build_at": _iso_now(),
-            "error": "",
-        })
+        await set_zone_last_build(zone_id, _iso_now())
 
         log.info("zone %s: build complete", zone_id)
         return BuildResult(
@@ -215,8 +211,7 @@ async def build_zone(
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 async def _get_zone_state(zone_id: str) -> dict:
-    r = get_redis()
-    return await r.hgetall(f"osrm:zones:{zone_id}")
+    return await get_zone(zone_id) or {}
 
 
 def _geojson_bytes(obj: dict) -> bytes:

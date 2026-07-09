@@ -1,6 +1,6 @@
 """Zone management endpoints: POST/GET/GET:id/DELETE /zones.
 
-Fase 6 — CRUD backed by Redis registry. Build triggers async, returns
+CRUD backed by JSON file registry. Build triggers async, returns
 zone_id immediately with status "building".
 """
 
@@ -15,7 +15,6 @@ from app.runtime.redis_client import (
     get_zone,
     list_zones,
     delete_zone_record,
-    get_redis,
     register_zone,
     release_port,
     reserve_port_pair,
@@ -42,9 +41,8 @@ async def create_zone(polygon: dict, linestrings: Optional[dict] = None):
     downloads base PBF if missing, then spawns `build_zone` as background task.
     Returns immediately with {zone_id, status: "building"}.
     """
-    # ── cap check (atomic SCARD) ─────────────────────────────────────
-    r = get_redis()
-    active_count = await r.scard("osrm:zones")
+    # ── cap check ─────────────────────────────────────────────────────
+    active_count = len(await list_zones())
     if active_count >= config.max_active_zones:
         raise HTTPException(
             status_code=429,
@@ -117,7 +115,7 @@ async def create_zone(polygon: dict, linestrings: Optional[dict] = None):
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    # ── reserve ports + register in Redis before build task starts ───
+    # ── reserve ports + register in registry before build task starts ──
     osrm_port, vroom_port = await reserve_port_pair()
     try:
         await register_zone(
@@ -183,9 +181,8 @@ async def _start_after_build(zone_id: str) -> None:
 @router.get("")
 async def list_zones_endpoint():
     """Return all zones with metadata, no body.
- 
+
     Sorted by last_access desc (most recently used first)."""
-    r = get_redis()
     zone_ids = await list_zones()
 
     zones = []
@@ -210,7 +207,6 @@ async def list_zones_endpoint():
 @router.get("/{zone_id}")
 async def get_zone_endpoint(zone_id: str):
     """Return zone metadata."""
-    r = get_redis()
     # Check if it's in the process registry too
     proc_status = None
     if zone_id in all_zone_ids():
@@ -240,7 +236,7 @@ async def get_zone_endpoint(zone_id: str):
 
 @router.delete("/{zone_id}")
 async def delete_zone_endpoint(zone_id: str):
-    """Stop subprocesses + cleanup data + delete Redis record."""
+    """Stop subprocesses + cleanup data + delete registry record."""
     zone = await get_zone(zone_id)
     if not zone:
         raise HTTPException(status_code=404, detail=f"zone {zone_id} not found")
@@ -275,7 +271,7 @@ async def delete_zone_endpoint(zone_id: str):
     if os.path.isdir(zone_dir):
         shutil.rmtree(zone_dir, ignore_errors=True)
 
-    # Delete Redis record
+    # Delete registry record
     await delete_zone_record(zone_id)
 
     log.info("zone %s: deleted", zone_id)
