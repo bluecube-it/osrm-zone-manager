@@ -35,5 +35,10 @@ class Config:
     def zones_dir(self) -> str:
         return f"{self.data_dir}/zones"
 
+    @property
+    def staging_dir(self) -> str:
+        """Local tmpfs dir for build scratch — avoids GCS FUSE write storm."""
+        return os.getenv("STAGING_DIR", "/tmp/osrm-build")
+
 
 config = Config()

@@ -20,7 +20,7 @@ OSRM_DEFAULT_RADIUS="${OSRM_DEFAULT_RADIUS:-50}"
 UVICORN_WORKERS="${UVICORN_WORKERS:-1}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
 
-mkdir -p "${DATA_DIR}/base" "${DATA_DIR}/zones"
+mkdir -p "${DATA_DIR}/base" "${DATA_DIR}/zones" /tmp/osrm-build
 ulimit -n 65536 2>/dev/null || true
 
 echo "=== osrm-zone-manager boot ==="
