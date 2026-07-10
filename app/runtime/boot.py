@@ -73,6 +73,9 @@ async def _recover_active(zid: str, zone: dict, current_pbf_mtime: float) -> Non
     zone_dir = f"{config.zones_dir}/{zid}"
     map_file = f"{zone_dir}/map.osrm.properties"
 
+    # ── 0. clean stale vroom-express from old deploys ─────────────
+    _cleanup_stale_vroom_express(zone_dir)
+
     # ── 1. file existence check ──────────────────────────────────────
     if not os.path.isfile(map_file):
         log.warning("boot recovery: zone %s: %s missing — marking failed", zid, map_file)
@@ -141,6 +144,25 @@ def _file_mtime(path: str) -> float:
     return os.path.getmtime(path) if os.path.isfile(path) else 0.0
 
 
+def _cleanup_stale_vroom_express(zone_dir: str) -> None:
+    """Remove stale vroom-express artifacts from old deploys.
+
+    Old code copied entire /vroom-express tree (node_modules, .git, src, etc)
+    into zone_dir/vroom-express/. New code only writes config.yml there.
+    If stale files exist, wipe the dir — supervisor only needs config.yml.
+    """
+    import shutil
+    ve_dir = f"{zone_dir}/vroom-express"
+    if not os.path.isdir(ve_dir):
+        return
+    # If node_modules or .git exists, it's stale from old deploy
+    stale_markers = ("node_modules", ".git", "src", "package.json")
+    if any(os.path.exists(f"{ve_dir}/{m}") for m in stale_markers):
+        log.info("boot recovery: cleaning stale vroom-express in zone %s", zone_dir)
+        shutil.rmtree(ve_dir, ignore_errors=True)
+        os.makedirs(ve_dir, exist_ok=True)
+
+
 async def _recover_built(zid: str, zone: dict, current_pbf_mtime: float) -> None:
     """Recover a zone that built files but didn't start subprocesses.
 
@@ -149,6 +171,10 @@ async def _recover_built(zid: str, zone: dict, current_pbf_mtime: float) -> None
     """
     zone_dir = f"{config.zones_dir}/{zid}"
     map_file = f"{zone_dir}/map.osrm.properties"
+
+    # ── 0. clean stale vroom-express from old deploys ─────────────
+    _cleanup_stale_vroom_express(zone_dir)
+
     if not os.path.isfile(map_file):
         log.warning("boot recovery: zone %s: %s missing — marking failed", zid, map_file)
         await set_zone_status(zid, "failed", error="map.osrm.properties missing on disk")

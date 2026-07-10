@@ -187,29 +187,43 @@ async def build_zone(
         await asyncio.to_thread(_cleanup_tmp)
 
         # ── step 6: vroom-express lives globally at /vroom-express (read-only).
-        # Per-zone only needs config.yml in the cwd — no node_modules copy.
-        # _write_vroom_config creates zone_dir/vroom-express/config.yml directly.
-        os.makedirs(f"{staging_dir}/vroom-express", exist_ok=True)
+        # Per-zone only needs config.yml in zone_dir/vroom-express/.
+        # No node_modules, no src copy — node resolves via NODE_PATH.
+        # Clean up stale vroom-express from previous deploys if present.
+        vroom_config_dir = f"{staging_dir}/vroom-express"
+        def _ensure_vroom_dir():
+            if os.path.isdir(vroom_config_dir):
+                shutil.rmtree(vroom_config_dir, ignore_errors=True)
+            os.makedirs(vroom_config_dir, exist_ok=True)
+        await asyncio.to_thread(_ensure_vroom_dir)
 
         # ── step 7: write per-zone vroom config (in staging) ───────────
         await _write_vroom_config(staging_dir, osrm_port, vroom_port)
 
         # ── step 8: move final files to GCS (zone_dir) ─────────────────
         # This is the ONLY sync I/O to GCS FUSE during build.
+        log.info("zone %s: moving files from staging to GCS...", zone_id)
         def _move_to_gcs():
-            # Move .osrm.* files
+            moved = []
+            # Clean stale vroom-express from previous deploys before writing fresh
+            old_ve = f"{zone_dir}/vroom-express"
+            if os.path.isdir(old_ve):
+                shutil.rmtree(old_ve, ignore_errors=True)
             for f in os.listdir(staging_dir):
                 src = f"{staging_dir}/{f}"
                 dst = f"{zone_dir}/{f}"
                 if os.path.isfile(src):
                     shutil.copy2(src, dst)
+                    moved.append(f)
                 elif os.path.isdir(src):
                     shutil.copytree(src, dst, dirs_exist_ok=True,
                                     copy_function=shutil.copy2)
+                    moved.append(f"{f}/")
             # Cleanup staging
             shutil.rmtree(staging_dir, ignore_errors=True)
-        await asyncio.to_thread(_move_to_gcs)
-        log.info("zone %s: files moved to GCS", zone_id)
+            return moved
+        moved_files = await asyncio.to_thread(_move_to_gcs)
+        log.info("zone %s: moved %d items to GCS: %s", zone_id, len(moved_files), moved_files)
 
         # ── update registry ───────────────────────────────────────────
         # status="built": files ready but subprocesses not yet started.
