@@ -186,17 +186,10 @@ async def build_zone(
                     os.remove(p)
         await asyncio.to_thread(_cleanup_tmp)
 
-        # ── step 6: copy vroom-express into staging (local fs, fast) ──
-        source_ve = config.vroom_express_dir
-        dest_ve = f"{staging_dir}/vroom-express"
-        if os.path.isdir(source_ve) and not os.path.isdir(dest_ve):
-            def _copy_ve():
-                try:
-                    shutil.copytree(source_ve, dest_ve, copy_function=os.link, dirs_exist_ok=True)
-                except OSError:
-                    shutil.copytree(source_ve, dest_ve, copy_function=shutil.copy2, dirs_exist_ok=True)
-            await asyncio.to_thread(_copy_ve)
-            log.info("zone %s: vroom-express copied to %s", zone_id, dest_ve)
+        # ── step 6: vroom-express lives globally at /vroom-express (read-only).
+        # Per-zone only needs config.yml in the cwd — no node_modules copy.
+        # _write_vroom_config creates zone_dir/vroom-express/config.yml directly.
+        os.makedirs(f"{staging_dir}/vroom-express", exist_ok=True)
 
         # ── step 7: write per-zone vroom config (in staging) ───────────
         await _write_vroom_config(staging_dir, osrm_port, vroom_port)
