@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Set
 
 from app.config import config
-from app.runtime.redis_client import (
+from app.runtime.registry_store import (
     get_zone,
     release_port,
     set_zone_status,

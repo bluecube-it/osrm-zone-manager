@@ -6,11 +6,15 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Config:
+    # /config = GCS FUSE bucket (persistent) — registry.json + config only
+    config_dir: str = field(default_factory=lambda: os.getenv("CONFIG_DIR", "/config"))
+    # /data = ephemeral storage (emptyDir / tmpfs) — PBF + zone build artifacts
     data_dir: str = field(default_factory=lambda: os.getenv("DATA_DIR", "/data"))
     base_pbf: str = field(default_factory=lambda: os.getenv("BASE_PBF", "/data/base/italy.osm.pbf"))
     geofabrik_url: str = field(default_factory=lambda: os.getenv(
         "GEOFABRIK_URL", "https://download.geofabrik.de/europe/italy-latest.osm.pbf"
     ))
+
     car_lua: str = "/opt/car.lua"
     vroom_express_dir: str = "/vroom-express"
 
@@ -36,9 +40,8 @@ class Config:
         return f"{self.data_dir}/zones"
 
     @property
-    def staging_dir(self) -> str:
-        """Local tmpfs dir for build scratch — avoids GCS FUSE write storm."""
-        return os.getenv("STAGING_DIR", "/tmp/osrm-build")
+    def registry_file(self) -> str:
+        return f"{self.config_dir}/registry.json"
 
 
 config = Config()

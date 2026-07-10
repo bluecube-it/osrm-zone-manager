@@ -1,22 +1,23 @@
-"""Boot recovery: read registry active zones, verify, restart subprocesses.
+"""Boot recovery: read registry, rebuild zones from stored polygon/linestrings.
 
-On container boot:
+On container boot (ephemeral /data is empty):
+- download base PBF if missing
 - iterate registry zones
-- for each: verify files exist, content-hash matches, restart processes
-- partial builds (status=building) resume pipeline
-- stale PBF detection
+- for each active/built zone: re-run build_zone from stored polygon/linestrings
+- stale PBF detection via mtime (always 0 on fresh ephemeral = rebuild all)
 """
 
 import os
 
 from app.config import config
-from app.runtime.redis_client import (
+from app.runtime.registry_store import (
     get_zone,
     list_zones,
     set_zone_status,
 )
 from app.runtime.supervisor import start_health_checker, start_zone
 from app.utils.logger import get_logger
+from app.builder.pipeline import build_zone
 
 log = get_logger(__name__)
 
@@ -27,7 +28,6 @@ async def recover_zones() -> None:
 
     if not zone_ids:
         log.info("boot recovery: no zones in registry")
-        # Health checker may still want to start for zones added after boot
         _ = await start_health_checker()
         return
 
@@ -53,150 +53,118 @@ async def recover_zones() -> None:
         else:
             log.warning("boot recovery: zone %s status='%s' — skipping", zid, status)
 
-    # Start health checker for ongoing monitoring
     _ = await start_health_checker()
 
 
 async def _recover_building(zid: str, zone: dict, current_pbf_mtime: float) -> None:
-    """Resume a partial build from the builder pipeline."""
-    log.info("boot recovery: zone %s is building — resuming pipeline", zid)
+    """Resume a partial build — re-run build_zone from stored polygon/linestrings."""
+    polygon = zone.get("polygon_geojson")
+    if not polygon:
+        await set_zone_status(
+            zid, "failed",
+            error="building at shutdown — polygon not in registry, cannot rebuild"
+        )
+        log.warning("boot recovery: zone %s: no polygon in registry, cannot rebuild", zid)
+        return
 
-    await set_zone_status(
-        zid, "failed",
-        error="building at shutdown — polygon not stored, manual rebuild required"
-    )
-    log.warning("boot recovery: zone %s building at shutdown — cannot resume (polygon not in registry)", zid)
+    linestrings = zone.get("linestrings_geojson") or None
+    log.info("boot recovery: zone %s: resuming build from registry", zid)
+    await set_zone_status(zid, "building")
+    result = await build_zone(zid, polygon, linestrings)
+    if result.ok:
+        await _start_after_rebuild(zid)
+    else:
+        log.error("boot recovery: zone %s rebuild failed: %s", zid, result.error)
 
 
 async def _recover_active(zid: str, zone: dict, current_pbf_mtime: float) -> None:
-    """Verify and restart an active zone."""
+    """Recover an active zone — check if map files exist, rebuild if not."""
     zone_dir = f"{config.zones_dir}/{zid}"
     map_file = f"{zone_dir}/map.osrm.properties"
 
-    # ── 0. clean stale vroom-express from old deploys ─────────────
-    _cleanup_stale_vroom_express(zone_dir)
-
-    # ── 1. file existence check ──────────────────────────────────────
+    # On ephemeral storage, files won't exist after restart → rebuild
     if not os.path.isfile(map_file):
-        log.warning("boot recovery: zone %s: %s missing — marking failed", zid, map_file)
-        await set_zone_status(zid, "failed", error="map.osrm.properties missing on disk")
+        polygon = zone.get("polygon_geojson")
+        if not polygon:
+            log.warning("boot recovery: zone %s: map missing and no polygon in registry — marking failed", zid)
+            await set_zone_status(zid, "failed", error="map missing, no polygon to rebuild")
+            return
+        linestrings = zone.get("linestrings_geojson") or None
+        log.info("boot recovery: zone %s: map missing, rebuilding from registry", zid)
+        await set_zone_status(zid, "building")
+        result = await build_zone(zid, polygon, linestrings)
+        if result.ok:
+            await _start_after_rebuild(zid)
+        else:
+            log.error("boot recovery: zone %s rebuild failed: %s", zid, result.error)
         return
 
-    # ── 2. content-hash verification ────────────────────────────────
+    # Map exists — verify hashes (ephemeral unlikely but possible)
     polygon_hash = zone.get("polygon_hash", "")
     linestrings_hash = zone.get("linestrings_hash", "")
     expected_pbf_mtime = zone.get("base_pbf_mtime", "")
 
-    # Check base PBF mtime for staleness
-    if current_pbf_mtime and expected_pbf_mtime:
-        try:
-            if float(expected_pbf_mtime) != current_pbf_mtime:
-                log.warning(
-                    "boot recovery: zone %s: PBF mtime mismatch "
-                    "(registered=%s current=%.2f) — marking stale",
-                    zid, expected_pbf_mtime, current_pbf_mtime,
-                )
-                await set_zone_status(zid, "stale")
-                return
-        except (ValueError, TypeError):
-            pass
-
-    # Read polygon/linestrings from disk if they exist to verify hashes
     poly_file = f"{zone_dir}/polygon.geojson"
-    ls_file = f"{zone_dir}/linestrings.geojson"
-
     if os.path.isfile(poly_file):
+        import hashlib
         with open(poly_file, "rb") as f:
             content = f.read()
-        import hashlib
         actual_poly_hash = hashlib.sha256(content).hexdigest()
         if actual_poly_hash != polygon_hash:
-            log.warning(
-                "boot recovery: zone %s: polygon hash mismatch "
-                "(registry=%s disk=%s) — mark failed", zid, polygon_hash[:12], actual_poly_hash[:12]
-            )
+            log.warning("boot recovery: zone %s: polygon hash mismatch — mark failed", zid)
             await set_zone_status(zid, "failed", error="content-hash mismatch")
             return
 
-    if linestrings_hash and os.path.isfile(ls_file):
-        with open(ls_file, "rb") as f:
-            content = f.read()
-        actual_ls_hash = hashlib.sha256(content).hexdigest()
-        if actual_ls_hash != linestrings_hash:
-            log.warning(
-                "boot recovery: zone %s: linestrings hash mismatch — mark failed", zid
-            )
-            await set_zone_status(zid, "failed", error="content-hash mismatch")
-            return
-    # ── 3. start subprocesses ──────────────────────────────────────
+    # Start subprocesses
     try:
         await start_zone(zid)
-        if zid in _get_all_zone_ids():
-            log.info("boot recovery: zone %s restarted successfully", zid)
-        else:
-            await set_zone_status(zid, "failed", error="startup failed during recovery")
+        log.info("boot recovery: zone %s restarted successfully", zid)
     except Exception as exc:
         log.error("boot recovery: zone %s restart failed: %s", zid, exc)
         await set_zone_status(zid, "failed", error=str(exc))
 
 
-def _file_mtime(path: str) -> float:
-    return os.path.getmtime(path) if os.path.isfile(path) else 0.0
-
-
-def _cleanup_stale_vroom_express(zone_dir: str) -> None:
-    """Remove stale vroom-express artifacts from old deploys.
-
-    Old code copied entire /vroom-express tree (node_modules, .git, src, etc)
-    into zone_dir/vroom-express/. New code only writes config.yml there.
-    If stale files exist, wipe the dir — supervisor only needs config.yml.
-    """
-    import shutil
-    ve_dir = f"{zone_dir}/vroom-express"
-    if not os.path.isdir(ve_dir):
-        return
-    # If node_modules, src, or .git exists, it's stale from old deploy
-    stale_markers = ("node_modules", ".git", "src", "package.json")
-    if any(os.path.exists(f"{ve_dir}/{m}") for m in stale_markers):
-        log.info("boot recovery: cleaning stale vroom-express in zone %s", zone_dir)
-        shutil.rmtree(ve_dir, ignore_errors=True)
-        os.makedirs(f"{ve_dir}/healthchecks", exist_ok=True)
-        # Re-copy healthchecks from global vroom-express
-        import shutil as shutil2
-        hc_src = f"{config.vroom_express_dir}/healthchecks/vroom_custom_matrix.json"
-        if os.path.isfile(hc_src):
-            shutil2.copy2(hc_src, f"{ve_dir}/healthchecks/")
-
-
 async def _recover_built(zid: str, zone: dict, current_pbf_mtime: float) -> None:
-    """Recover a zone that built files but didn't start subprocesses.
-
-    Triggers start_zone (same path as _start_after_build). Skips hash checks
-    since build already verified them.
-    """
+    """Recover a built zone — rebuild if files missing, then start."""
     zone_dir = f"{config.zones_dir}/{zid}"
     map_file = f"{zone_dir}/map.osrm.properties"
 
-    # ── 0. clean stale vroom-express from old deploys ─────────────
-    _cleanup_stale_vroom_express(zone_dir)
-
     if not os.path.isfile(map_file):
-        log.warning("boot recovery: zone %s: %s missing — marking failed", zid, map_file)
-        await set_zone_status(zid, "failed", error="map.osrm.properties missing on disk")
+        polygon = zone.get("polygon_geojson")
+        if not polygon:
+            log.warning("boot recovery: zone %s: map missing and no polygon — marking failed", zid)
+            await set_zone_status(zid, "failed", error="map missing, no polygon to rebuild")
+            return
+        linestrings = zone.get("linestrings_geojson") or None
+        log.info("boot recovery: zone %s: rebuilding from registry", zid)
+        await set_zone_status(zid, "building")
+        result = await build_zone(zid, polygon, linestrings)
+        if result.ok:
+            await _start_after_rebuild(zid)
+        else:
+            log.error("boot recovery: zone %s rebuild failed: %s", zid, result.error)
         return
+
     log.info("boot recovery: zone %s status='%s' — starting subprocesses", zid, zone.get("status"))
     try:
         await set_zone_status(zid, "starting")
         await start_zone(zid)
-        if zid in _get_all_zone_ids():
-            log.info("boot recovery: zone %s recovered from built → active", zid)
-        else:
-            await set_zone_status(zid, "failed", error="startup failed during recovery")
+        log.info("boot recovery: zone %s recovered from built → active", zid)
     except Exception as exc:
         log.error("boot recovery: zone %s start failed: %s", zid, exc)
         await set_zone_status(zid, "failed", error=str(exc))
 
 
-def _get_all_zone_ids() -> set:
-    from app.runtime.supervisor import all_zone_ids
-    return all_zone_ids()
+async def _start_after_rebuild(zid: str) -> None:
+    """Start subprocesses after a successful rebuild."""
+    await set_zone_status(zid, "starting")
+    try:
+        await start_zone(zid)
+        log.info("boot recovery: zone %s rebuilt and started", zid)
+    except Exception as exc:
+        log.error("boot recovery: zone %s post-rebuild start failed: %s", zid, exc)
+        await set_zone_status(zid, "failed", error=str(exc))
+
+
+def _file_mtime(path: str) -> float:
+    return os.path.getmtime(path) if os.path.isfile(path) else 0.0

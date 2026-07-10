@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 
 from app.config import config
-from app.runtime.redis_client import (
+from app.runtime.registry_store import (
     delete_zone_record,
     set_zone_status,
     get_zone,

@@ -84,11 +84,12 @@ COPY config/ /app/config/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# /data is the persistent mount point (GCS FUSE bucket)
-# /data/base/italy.osm.pbf     — source PBF
-# /data/zones/<zone_id>/       — per-zone datasets (.osrm.*, reduced.pbf, polygon.geojson, linestrings.geojson, config.yml)
-# /data/registry.json          — zone registry (JSON, atomic write via os.replace)
-VOLUME ["/data"]
+# /data = ephemeral storage (emptyDir / tmpfs) — base PBF + zone build artifacts
+# /config = GCS FUSE bucket (persistent) — registry.json only
+# /data/base/italy.osm.pbf     — source PBF (downloaded at boot, lost on restart)
+# /data/zones/<zone_id>/       — per-zone datasets (rebuilt from registry at boot)
+# /config/registry.json        — zone registry (polygon, linestrings, metadata)
+VOLUME ["/data", "/config"]
 
 EXPOSE 8080
 

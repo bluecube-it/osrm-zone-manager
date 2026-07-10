@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.config import config
-from app.runtime.redis_client import get_zone, touch_zone
+from app.runtime.registry_store import get_zone, touch_zone
 from app.api import radiuses as rmod
 from app.utils.logger import get_logger
 

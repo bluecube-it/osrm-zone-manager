@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException
 
 from app.config import config
-from app.runtime.redis_client import (
+from app.runtime.registry_store import (
     compute_hashes,
     get_zone,
     list_zones,
@@ -119,7 +119,9 @@ async def create_zone(polygon: dict, linestrings: Optional[dict] = None):
     osrm_port, vroom_port = await reserve_port_pair()
     try:
         await register_zone(
-            zone_id, osrm_port, vroom_port, computed_ph, computed_lh, base_mtime
+            zone_id, osrm_port, vroom_port, computed_ph, computed_lh, base_mtime,
+            polygon_geojson=polygon,
+            linestrings_geojson=linestrings,
         )
         await set_zone_status(zone_id, "building")
     except Exception as exc:

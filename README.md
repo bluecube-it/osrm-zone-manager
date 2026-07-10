@@ -13,11 +13,13 @@ traffic and injects DRT radiuses.
 ```bash
 docker build -t osrm-zone-manager .
 
-# /data persisted on host
+# /config = persistent (GCS bucket / host dir) — registry.json
+# /data   = ephemeral (emptyDir / tmpfs) — PBF + build artifacts
 docker run -d \
   --name osrm-zone-manager \
   -p 8080:8080 \
-  -v $(pwd)/data:/data \
+  -v $(pwd)/config:/config \
+  -v osrm-zone-manager-data:/data \
   -e ZONE_TTL_DAYS=90 \
   -e MAX_ACTIVE_ZONES=20 \
   -e OSRM_DEFAULT_RADIUS=50 \
@@ -25,7 +27,8 @@ docker run -d \
 ```
 
 First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
-(~2GB) into `/data/base/` if missing.
+(~2GB) into `/data/base/` if missing. Pre-mount a PBF at
+`/data/base/italy.osm.pbf` to skip download.
 
 ## API
 
@@ -43,17 +46,19 @@ First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
 
 Single container:
 - FastAPI (uvicorn) — gateway + radiuses middleware
-- JSON file registry (`/data/registry.json`) — zone registry + last_access tracking
+- JSON file registry (`/config/registry.json`) — zone registry + last_access tracking
 - Per active zone (subprocesses, NOT containers):
   - `osrm-routed --algorithm mld -i 127.0.0.1 -p 5XXX /data/zones/<id>/map.osrm`
   - `vroom-express` on `3XXX` (config.yml templated per-zone, points at `5XXX`)
 - Builder (asyncio): osmium extract → reduce.py → osmium merge → osrm-extract/partition/customize
 - Evictor (asyncio task): TTL by last_access, never evicts `building` zones
 
-Persistence (`/data` mount):
-- `/data/base/italy.osm.pbf` — source PBF (downloaded once)
-- `/data/zones/<id>/` — `map.osrm.*`, `reduced.pbf`, `polygon.geojson`, `linestrings.geojson`, `config.yml`
-- `/data/registry.json` — zone registry (JSON, atomic write via `os.replace` for GCS FUSE compatibility)
+Storage layout:
+- `/config` — GCS FUSE bucket (persistent) — `registry.json` only (polygon, linestrings, zone metadata)
+- `/data` — ephemeral (emptyDir / tmpfs) — base PBF + zone build artifacts
+  - `/data/base/italy.osm.pbf` — source PBF (downloaded at boot if missing)
+  - `/data/zones/<id>/` — `map.osrm.*`, `vroom-express/config.yml`, `polygon.geojson`, `linestrings.geojson`
+- On boot: reads registry.json → rebuilds zones from stored polygon/linestrings
 
 ## Versions
 
@@ -68,8 +73,9 @@ Persistence (`/data` mount):
 
 | Var | Default | Purpose |
 |---|---|---|
-| `DATA_DIR` | `/data` | Persistent data root |
-| `BASE_PBF` | `/data/base/italy.osm.pbf` | Source PBF path |
+| `CONFIG_DIR` | `/config` | GCS FUSE mount (persistent) — registry.json |
+| `DATA_DIR` | `/data` | Ephemeral data root (emptyDir / tmpfs) |
+| `BASE_PBF` | `/data/base/italy.osm.pbf` | Source PBF path (downloaded if missing) |
 | `GEOFABRIK_URL` | `https://download.geofabrik.de/europe/italy-latest.osm.pbf` | Auto-download source |
 | `ZONE_TTL_DAYS` | `90` | Evict zones not accessed in N days |
 | `MAX_ACTIVE_ZONES` | `20` | Hard cap on concurrent active zones |

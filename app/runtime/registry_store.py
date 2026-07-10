@@ -1,23 +1,23 @@
-"""JSON file registry — replaces Redis.
+"""JSON file registry on GCS FUSE mount (/config/registry.json).
 
-Single-file registry at /data/registry.json. asyncio.Lock guards all access
-(Cloud Run concurrency=1, uvicorn workers=1). Write pattern: read-modify-write
-under lock, atomic write via temp file + os.replace (works on GCS FUSE for
-single-file replace, unlike Redis AOF rename fury).
+Registry file lives on persistent GCS bucket — survives container restarts.
+Zone build artifacts (PBF, osrm maps) live on ephemeral storage and are
+rebuilt from polygon/linestrings stored in this registry.
+
+asyncio.Lock guards all access (Cloud Run concurrency=1, uvicorn workers=1).
+Write pattern: read-modify-write under lock, atomic write via temp + os.replace.
 
 Schema:
   {
     "zones": {
-      "<zone_id>": {  # same fields as old Redis HASH
+      "<zone_id>": {
         "zone_id", "polygon_hash", "linestrings_hash", "base_pbf_mtime",
         "status", "osrm_port", "vroom_port", "osrm_pid", "vroom_pid",
-        "created_at", "last_access", "last_build_at", "error"
+        "created_at", "last_access", "last_build_at", "error",
+        "polygon_geojson", "linestrings_geojson"
       }
     }
   }
-
-Port allocation lives implicitly in zone records — reserve_port_pair scans all
-zones and skips ports already in use.
 """
 
 import asyncio
@@ -36,7 +36,9 @@ log = get_logger(__name__)
 _lock = asyncio.Lock()
 _cache: Optional[Dict] = None  # in-memory mirror of registry.json
 
-REGISTRY_FILE = f"{config.data_dir}/registry.json"
+# Use config.registry_file at call-time (allows monkeypatch in tests)
+def _registry_file() -> str:
+    return config.registry_file
 
 
 async def _load() -> Dict:
@@ -44,19 +46,19 @@ async def _load() -> Dict:
     global _cache
     if _cache is not None:
         return _cache
-    if not os.path.isfile(REGISTRY_FILE):
+    rf = _registry_file()
+    if not os.path.isfile(rf):
         _cache = {"zones": {}}
         return _cache
     try:
-        with open(REGISTRY_FILE, "r") as f:
+        with open(rf, "r") as f:
             _cache = json.load(f)
         if "zones" not in _cache:
             _cache["zones"] = {}
     except (json.JSONDecodeError, OSError) as exc:
-        # Corrupt registry — back it up and start fresh (data loss risk logged)
         log.error("registry corrupt, backing up and starting fresh: %s", exc)
         try:
-            os.replace(REGISTRY_FILE, f"{REGISTRY_FILE}.corrupt")
+            os.replace(rf, f"{rf}.corrupt")
         except OSError:
             pass
         _cache = {"zones": {}}
@@ -68,7 +70,8 @@ async def _dump() -> None:
     global _cache
     if _cache is None:
         return
-    tmp = f"{REGISTRY_FILE}.tmp"
+    rf = _registry_file()
+    tmp = f"{rf}.tmp"
     # Clean up stale tmp from previous crash
     try:
         if os.path.isfile(tmp):
@@ -80,7 +83,7 @@ async def _dump() -> None:
             json.dump(_cache, f, separators=(",", ":"), sort_keys=True)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, REGISTRY_FILE)
+        os.replace(tmp, rf)
     except OSError as exc:
         log.error("registry write failed: %s", exc)
         raise
@@ -96,7 +99,10 @@ async def register_zone(
     polygon_hash: str,
     linestrings_hash: str,
     base_pbf_mtime: float,
+    polygon_geojson: Optional[dict] = None,
+    linestrings_geojson: Optional[dict] = None,
 ) -> None:
+    """Register a zone. Stores polygon/linestrings GeoJSON for boot rebuild."""
     now = iso_now()
     async with _lock:
         data = await _load()
@@ -114,6 +120,8 @@ async def register_zone(
             "last_access": now,
             "last_build_at": "",
             "error": "",
+            "polygon_geojson": polygon_geojson or {},
+            "linestrings_geojson": linestrings_geojson or {},
         }
         await _dump()
 
@@ -142,13 +150,7 @@ _touch_flush_task: Optional[asyncio.Task] = None
 
 
 async def touch_zone(zone_id: str) -> None:
-    """Update last_access timestamp in memory. Batched flush to disk every 30s.
-
-    Avoids rewriting registry.json on every proxy request (GCS FUSE write
-    cost). Evictor reads last_access from the in-memory cache which is always
-    up-to-date. On container shutdown, lifespan stops the flush task which
-    does a final write.
-    """
+    """Update last_access timestamp in memory. Batched flush to disk every 30s."""
     now = iso_now()
     async with _lock:
         data = await _load()
@@ -208,7 +210,6 @@ def _sha256_hex(content_bytes: bytes) -> str:
 
 async def reserve_port_pair() -> tuple:
     """Reserve one unused osrm + vroom port.
-
     Returns (osrm_port, vroom_port) or raises RuntimeError if exhausted.
     """
     osrm_start = config.osrm_port_start
@@ -226,18 +227,13 @@ async def reserve_port_pair() -> tuple:
                 continue
             if str(vroom_port) in used_vroom:
                 continue
-            # Note: no dump here — caller will register_zone which writes
             return (osrm_port, vroom_port)
 
     raise RuntimeError("port pool exhausted — tried offset 1..150 (max zones ~150)")
 
 
 async def release_port(kind: str, port: int) -> None:
-    """No-op for JSON registry — ports are implicit in zone records.
-
-    Kept for API compatibility. When a zone is deleted, its ports free
-    automatically since reserve_port_pair scans zone records.
-    """
+    """No-op — ports are implicit in zone records."""
     log.debug("release_port %s %d (no-op, implicit in zone records)", kind, port)
 
 
@@ -261,7 +257,7 @@ async def set_zone_last_build(zone_id: str, ts: str) -> None:
 
 
 async def update_zone_fields(zone_id: str, fields: Dict[str, str]) -> None:
-    """Bulk update zone fields (raw replacement for supervisor hset bypass)."""
+    """Bulk update zone fields."""
     async with _lock:
         data = await _load()
         zone = data["zones"].get(zone_id)

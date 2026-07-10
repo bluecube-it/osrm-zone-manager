@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     log.info("shutdown: stopping evictor")
     task.cancel()
     # Flush pending last_access updates to disk
-    from app.runtime.redis_client import _flush_touch, _touch_flush_task
+    from app.runtime.registry_store import _flush_touch, _touch_flush_task
     if _touch_flush_task and not _touch_flush_task.done():
         _touch_flush_task.cancel()
         try:

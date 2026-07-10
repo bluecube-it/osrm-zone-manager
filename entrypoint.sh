@@ -3,15 +3,18 @@ set -e
 
 # osrm-zone-manager entrypoint
 # Boot order:
-#   1. ensure /data layout
-#   2. ensure base PBF exists (download via orchestrator lifespan, fail-fast)
-#   3. start uvicorn (orchestrator: FastAPI on :8080)
-#   uvicorn handles boot recovery (registry.json) + evictor worker + builder
+#   1. ensure /data (ephemeral) + /config (GCS FUSE) layout
+#   2. start uvicorn (orchestrator: FastAPI on :8080)
+#   uvicorn handles: PBF download + boot recovery (registry.json) + evictor + builder
+#
+# Storage layout:
+#   /config  — GCS FUSE bucket (persistent) — registry.json only
+#   /data    — ephemeral (emptyDir / tmpfs) — base PBF + zone build artifacts
 #
 # CLOUD RUN: set max_instances=1 — registry.json is single-writer.
-# Multiple instances would race on the same GCS bucket.
 
 DATA_DIR="${DATA_DIR:-/data}"
+CONFIG_DIR="${CONFIG_DIR:-/config}"
 BASE_PBF="${BASE_PBF:-${DATA_DIR}/base/italy.osm.pbf}"
 GEOFABRIK_URL="${GEOFABRIK_URL:-https://download.geofabrik.de/europe/italy-latest.osm.pbf}"
 ZONE_TTL_DAYS="${ZONE_TTL_DAYS:-90}"
@@ -20,27 +23,23 @@ OSRM_DEFAULT_RADIUS="${OSRM_DEFAULT_RADIUS:-50}"
 UVICORN_WORKERS="${UVICORN_WORKERS:-1}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
 
-mkdir -p "${DATA_DIR}/base" "${DATA_DIR}/zones" /tmp/osrm-build
+mkdir -p "${DATA_DIR}/base" "${DATA_DIR}/zones" "${CONFIG_DIR}"
 ulimit -n 65536 2>/dev/null || true
 
 echo "=== osrm-zone-manager boot ==="
-echo "DATA_DIR=${DATA_DIR}"
+echo "DATA_DIR=${DATA_DIR} (ephemeral)"
+echo "CONFIG_DIR=${CONFIG_DIR} (GCS/persistent)"
 echo "BASE_PBF=${BASE_PBF}"
 echo "ZONE_TTL_DAYS=${ZONE_TTL_DAYS}"
 echo "MAX_ACTIVE_ZONES=${MAX_ACTIVE_ZONES}"
 echo "OSRM_DEFAULT_RADIUS=${OSRM_DEFAULT_RADIUS}"
 
-# --- 1. Base PBF (download delegated to orchestrator at boot, fail-fast if missing) ---
-# app/main.py lifespan calls ensure_base_pbf() before recover_zones().
-# If GEOFABRIK_URL is reachable the download happens there; on failure uvicorn exits.
-# To pre-mount instead: bind a volume at ${BASE_PBF} (e.g. /data/base/italy.osm.pbf).
-
-# --- 2. Start uvicorn (orchestrator) in foreground ---
-# Registry is a JSON file at ${DATA_DIR}/registry.json (see app/runtime/redis_client.py).
-# Boot recovery (registry zones → restart sub-processes) runs in FastAPI startup hook.
-# Evictor worker runs as asyncio task inside the same process.
+# --- 1. Start uvicorn (orchestrator) in foreground ---
+# Registry is a JSON file at ${CONFIG_DIR}/registry.json (see app/runtime/registry_store.py).
+# Boot recovery: reads registry → rebuilds zones from stored polygon/linestrings.
+# Base PBF download happens in FastAPI lifespan if missing on ephemeral.
 echo "=== starting orchestrator (uvicorn) on :8080 ==="
-export DATA_DIR BASE_PBF GEOFABRIK_URL
+export DATA_DIR CONFIG_DIR BASE_PBF GEOFABRIK_URL
 export ZONE_TTL_DAYS MAX_ACTIVE_ZONES OSRM_DEFAULT_RADIUS
 
 exec uvicorn app.main:app \
