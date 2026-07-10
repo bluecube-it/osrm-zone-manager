@@ -187,14 +187,18 @@ async def build_zone(
         await asyncio.to_thread(_cleanup_tmp)
 
         # ── step 6: vroom-express lives globally at /vroom-express (read-only).
-        # Per-zone only needs config.yml in zone_dir/vroom-express/.
+        # Per-zone needs config.yml + healthchecks/vroom_custom_matrix.json.
         # No node_modules, no src copy — node resolves via NODE_PATH.
-        # Clean up stale vroom-express from previous deploys if present.
         vroom_config_dir = f"{staging_dir}/vroom-express"
+        source_ve = config.vroom_express_dir
         def _ensure_vroom_dir():
             if os.path.isdir(vroom_config_dir):
                 shutil.rmtree(vroom_config_dir, ignore_errors=True)
-            os.makedirs(vroom_config_dir, exist_ok=True)
+            os.makedirs(f"{vroom_config_dir}/healthchecks", exist_ok=True)
+            # Copy healthchecks from global vroom-express
+            hc_src = f"{source_ve}/healthchecks/vroom_custom_matrix.json"
+            if os.path.isfile(hc_src):
+                shutil.copy2(hc_src, f"{vroom_config_dir}/healthchecks/")
         await asyncio.to_thread(_ensure_vroom_dir)
 
         # ── step 7: write per-zone vroom config (in staging) ───────────

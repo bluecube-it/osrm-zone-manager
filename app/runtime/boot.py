@@ -155,12 +155,17 @@ def _cleanup_stale_vroom_express(zone_dir: str) -> None:
     ve_dir = f"{zone_dir}/vroom-express"
     if not os.path.isdir(ve_dir):
         return
-    # If node_modules or .git exists, it's stale from old deploy
+    # If node_modules, src, or .git exists, it's stale from old deploy
     stale_markers = ("node_modules", ".git", "src", "package.json")
     if any(os.path.exists(f"{ve_dir}/{m}") for m in stale_markers):
         log.info("boot recovery: cleaning stale vroom-express in zone %s", zone_dir)
         shutil.rmtree(ve_dir, ignore_errors=True)
-        os.makedirs(ve_dir, exist_ok=True)
+        os.makedirs(f"{ve_dir}/healthchecks", exist_ok=True)
+        # Re-copy healthchecks from global vroom-express
+        import shutil as shutil2
+        hc_src = f"{config.vroom_express_dir}/healthchecks/vroom_custom_matrix.json"
+        if os.path.isfile(hc_src):
+            shutil2.copy2(hc_src, f"{ve_dir}/healthchecks/")
 
 
 async def _recover_built(zid: str, zone: dict, current_pbf_mtime: float) -> None:
