@@ -8,3 +8,10 @@ venv/
 .idea/
 .vscode/
 data/
+target/
+*.jar
+local-config/
+local-data/
+.mvn/
+.codegraph
+.planning

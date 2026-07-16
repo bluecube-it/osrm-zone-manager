@@ -3,6 +3,13 @@ ARG VROOM_VERSION=v1.15.0
 ARG OSRM_VERSION=v26.4
 ARG OSMIUM_VERSION=1.16.0
 
+# ---- Stage 0: Maven build ----
+FROM --platform=linux/amd64 maven:3.9-eclipse-temurin-25 AS maven_builder
+WORKDIR /build
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests -q
+
 # ---- Stage 1: OSRM backend binaries + car.lua profile ----
 FROM --platform=linux/amd64 ghcr.io/project-osrm/osrm-backend:${OSRM_VERSION} AS osrm_builder
 
@@ -33,21 +40,9 @@ FROM --platform=linux/amd64 alpine:${ALPINE_VERSION} AS runstage
 ARG OSRM_VERSION
 ARG VROOM_VERSION
 
-# Copy OSRM binaries + profiles
-COPY --from=osrm_builder /usr/local/bin/. /usr/local/bin
-COPY --from=osrm_builder /opt/. /opt
-
-# Copy vroom binary
-COPY --from=vroom_builder /vroom/bin/vroom /usr/local/bin
-
-# Copy vroom-express node app (we'll template config.yml per-zone at runtime)
-COPY --from=vroom_node_builder /vroom-express/. /vroom-express
-
-# Copy osmium-tool binary
-COPY --from=osmium_builder /usr/local/bin/osmium /usr/local/bin/osmium
-
-# Install runtime deps: python (orchestrator) + node (vroom-express) + tools
+# Install runtime deps
 RUN apk --update --no-cache add \
+        openjdk25-jre \
         python3 \
         py3-pip \
         py3-setuptools \
@@ -72,28 +67,36 @@ RUN apk --update --no-cache add \
     pip3 install --no-cache-dir --break-system-packages \
         osmium \
         shapely \
-        fastapi \
-        uvicorn[standard] \
-        httpx \
         polyline && \
     rm -rf /var/cache/apk/*
 
-WORKDIR /app
-COPY app/ /app/app/
-COPY config/ /app/config/
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Copy OSRM binaries + profiles
+COPY --from=osrm_builder /usr/local/bin/. /usr/local/bin
+COPY --from=osrm_builder /opt/. /opt
 
-# /data = ephemeral storage (emptyDir / tmpfs) — base PBF + zone build artifacts
-# /config = GCS FUSE bucket (persistent) — registry.json only
-# /data/base/italy.osm.pbf     — source PBF (downloaded at boot, lost on restart)
-# /data/zones/<zone_id>/       — per-zone datasets (rebuilt from registry at boot)
-# /config/registry.json        — zone registry (polygon, linestrings, metadata)
+# Copy vroom binary
+COPY --from=vroom_builder /vroom/bin/vroom /usr/local/bin
+
+# Copy vroom-express node app
+COPY --from=vroom_node_builder /vroom-express/. /vroom-express
+
+# Copy osmium-tool binary
+COPY --from=osmium_builder /usr/local/bin/osmium /usr/local/bin/osmium
+
+# Copy application
+COPY --from=maven_builder /build/target/application.jar /app/application.jar
+COPY src/main/scripts/reduce.py /app/scripts/reduce.py
+COPY src/main/resources/config/vroom-config.template.yml /app/config/vroom-config.template.yml
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /app/scripts/reduce.py /entrypoint.sh
+
+WORKDIR /app
+
 VOLUME ["/data", "/config"]
 
 EXPOSE 8080
 
 HEALTHCHECK --start-period=10m --interval=30s --timeout=3s --retries=5 \
-    CMD curl --fail -s http://127.0.0.1:8080/health || exit 1
+    CMD curl --fail -s http://127.0.0.1:8080/actuator/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
