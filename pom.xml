@@ -32,7 +32,6 @@
         <mapstruct.version>1.6.3</mapstruct.version>
         <springdoc-openapi-starter-webmvc-ui.version>3.0.3</springdoc-openapi-starter-webmvc-ui.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
-        <jib-maven-plugin.version>3.5.1</jib-maven-plugin.version>
         <sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
         <sonar.sources>src/main/java</sonar.sources>
         <sonar.coverage.exclusions>
@@ -177,28 +176,6 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
-                <groupId>com.google.cloud.tools</groupId>
-                <artifactId>jib-maven-plugin</artifactId>
-                <version>${jib-maven-plugin.version}</version>
-                <configuration>
-                    <from>
-                        <image>eclipse-temurin:25-jre-alpine</image>
-                    </from>
-                    <to>
-                        <image>${docker.image.name}:${docker.image.tag}</image>
-                    </to>
-                    <container>
-                        <ports>
-                            <port>8080</port>
-                        </ports>
-                        <jvmFlags>
-                            <jvmFlag>-Duser.timezone=UTC</jvmFlag>
-                            <jvmFlag>-XX:+UseZGC</jvmFlag>
-                        </jvmFlags>
-                    </container>
-                </configuration>
             </plugin>
         </plugins>
     </build>

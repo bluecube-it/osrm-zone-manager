@@ -1,0 +1,57 @@
+name: Tests and code analysis
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tests and code analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'liberica'
+          java-version: '25'
+          cache: maven
+      - name: Cache SonarQube packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+      - name: Run tests
+        run: |
+          ./mvnw -B clean verify -Dspring.profiles.include=test-ci
+      - name: Run SonarCloud analysis
+        if: ${{ env.SONAR_TOKEN != '' }}
+        run: |
+          ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.organization=bluecube-it \
+            -Dsonar.projectKey=bluecube-it_osrm-zone-manager
