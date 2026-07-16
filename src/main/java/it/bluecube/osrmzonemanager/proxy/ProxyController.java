@@ -55,7 +55,7 @@ public class ProxyController {
      * @param prefix  the prefix to be removed from the path
      * @return the remaining path after the prefix, or an empty string if the prefix is not found
      */
-    public String extractPath(HttpServletRequest request, String prefix) {
+    private String extractPath(HttpServletRequest request, String prefix) {
         String uri = request.getRequestURI();
         String contextPath = request.getContextPath();
         if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {

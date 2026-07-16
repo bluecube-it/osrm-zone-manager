@@ -13,7 +13,7 @@ public class DbCleaner implements TestExecutionListener {
     private ZoneRepository zoneRepository;
 
     public void run() {
-        zoneRepository.deleteAll();
+        zoneRepository.deleteAllInBatch();
     }
 
     @Override

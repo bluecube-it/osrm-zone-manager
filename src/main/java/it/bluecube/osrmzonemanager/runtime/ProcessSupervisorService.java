@@ -4,6 +4,7 @@ import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import it.bluecube.osrmzonemanager.zone.ZonePorts;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -128,6 +129,24 @@ public class ProcessSupervisorService {
         log.info("Zone {}: stopped (ports {}/{})", zoneId, info.osrmPort, info.vroomPort);
     }
 
+    /**
+     * Removes the per-zone lock from the registry. Called after zone is fully deleted.
+     * Safe because deleteZone is the terminal state — no further startZone expected.
+     */
+    public void removeZoneLock(String zoneId) {
+        zoneLocks.remove(zoneId);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        try {
+            log.info("Shutdown: stopping all zones");
+            stopAllZones();
+        } catch (Exception e) {
+            log.warn("Shutdown: error stopping zones: {}", e.getMessage());
+        }
+    }
+
     public void stopAllZones() {
         List<String> ids = List.copyOf(registry.keySet());
         for (String zoneId : ids) {
@@ -246,6 +265,7 @@ public class ProcessSupervisorService {
             int status = response.getStatusCode().value();
             return status < 500 || status == 400;
         } catch (ResourceAccessException e) {
+            log.debug("Ping failed for {}: {}", url, e.getMessage());
             return false;
         }
     }
@@ -262,6 +282,7 @@ public class ProcessSupervisorService {
             return;
         }
         try {
+            killDescendants(process, name);
             process.destroy();
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
@@ -272,6 +293,26 @@ public class ProcessSupervisorService {
             process.destroyForcibly();
         }
         log.debug("Killed {} (pid={})", name, process.pid());
+    }
+
+    private void killDescendants(Process process, String name) {
+        try {
+            process.descendants().forEach(ph -> {
+                try {
+                    ph.destroy();
+                    try {
+                        ph.onExit().get(1, TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        log.debug("Descendant {} of {} did not terminate within 1s, forcibly killing", ph.pid(), name);
+                        ph.destroyForcibly();
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to kill descendant of {} (pid={}): {}", name, ph.pid(), e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            log.debug("Failed to enumerate descendants of {} (pid={}): {}", name, process.pid(), e.getMessage());
+        }
     }
 
     private void markFailed(String zoneId, String error) {

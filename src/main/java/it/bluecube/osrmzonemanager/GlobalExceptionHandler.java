@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager;
 
+import it.bluecube.osrmzonemanager.builder.BuildException;
 import it.bluecube.osrmzonemanager.proxy.PolylineDecodeException;
 import it.bluecube.osrmzonemanager.proxy.ProxyException;
 import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
@@ -9,6 +10,7 @@ import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -61,6 +63,27 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
         return body(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    @ExceptionHandler(BuildException.class)
+    public ResponseEntity<Map<String, String>> handleBuildException(BuildException e) {
+        log.error("Build failure: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, String>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+        log.warn("Concurrent modification conflict: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", "concurrent modification — retry the request"));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, String>> handleGenericException(Exception e) {
+        log.error("Unexpected error: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "internal server error"));
     }
 
     private ResponseEntity<Map<String, String>> body(HttpStatus status, String message) {

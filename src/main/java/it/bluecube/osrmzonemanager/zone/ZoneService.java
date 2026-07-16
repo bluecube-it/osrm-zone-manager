@@ -51,7 +51,7 @@ public class ZoneService {
             ZoneStatus.ACTIVE.name(), ZoneStatus.DEGRADED.name(), ZoneStatus.STARTING.name()
     );
     private static final int ZONE_ID_HEX_LENGTH = 12;
-    private static final String ZONE_REUSE_MESSAGE = "zone already active with same content — reusing";
+    static final String ZONE_REUSE_MESSAGE = "zone already active with same content — reusing";
     private static final String ZONE_BUILD_STARTED_MESSAGE = "build started — poll GET /zones/{id} for status";
     private static final byte ZONE_ID_SEPARATOR = (byte) '|';
 
@@ -97,10 +97,15 @@ public class ZoneService {
         }
 
         int[] ports = reservePorts();
-        ZoneEntity zone = buildZoneEntity(zoneId, polygon, lineStrings, polygonHash, lineStringsHash, baseMtime, ports);
+        ZoneEntity zone = zoneStateService.findById(zoneId)
+                .filter(e -> e.matchesContent(polygonHash, lineStringsHash, baseMtime))
+                .orElseGet(() -> buildZoneEntity(zoneId, polygon, lineStrings, polygonHash, lineStringsHash, baseMtime, new int[]{ports[0], ports[1]}));
+        zone.setStatus(ZoneStatus.BUILDING.name());
+        zone.setOsrmPort(ports[0]);
+        zone.setVroomPort(ports[1]);
+        zone.setError("");
         persistOrReleasePorts(zone, ports);
 
-        zoneStateService.markZoneBuilding(zoneId);
         launchBuild(zoneId, polygon, lineStrings);
 
         return zoneMapper.toZoneDTO(zone, ZONE_BUILD_STARTED_MESSAGE);
@@ -165,6 +170,7 @@ public class ZoneService {
 
         removeZoneDirectory(zoneId);
         zoneStateService.deleteById(zoneId);
+        processSupervisor.removeZoneLock(zoneId);
         log.info("Zone {}: deleted", zoneId);
     }
 

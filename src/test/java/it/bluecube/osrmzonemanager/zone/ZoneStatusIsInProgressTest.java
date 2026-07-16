@@ -14,10 +14,9 @@ class ZoneStatusIsInProgressTest extends BaseUnitTest {
     }
 
     @Test
-    void shouldReturnFalseForActiveDegradedFailedEvicting() {
+    void shouldReturnFalseForActiveDegradedFailed() {
         Assertions.assertThat(ZoneStatus.ACTIVE.isInProgress()).isFalse();
         Assertions.assertThat(ZoneStatus.DEGRADED.isInProgress()).isFalse();
         Assertions.assertThat(ZoneStatus.FAILED.isInProgress()).isFalse();
-        Assertions.assertThat(ZoneStatus.EVICTING.isInProgress()).isFalse();
     }
 }

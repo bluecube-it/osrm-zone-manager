@@ -18,6 +18,5 @@ class ZoneStatusIsLiveTest extends BaseUnitTest {
         Assertions.assertThat(ZoneStatus.BUILT.isLive()).isFalse();
         Assertions.assertThat(ZoneStatus.STARTING.isLive()).isFalse();
         Assertions.assertThat(ZoneStatus.FAILED.isLive()).isFalse();
-        Assertions.assertThat(ZoneStatus.EVICTING.isLive()).isFalse();
     }
 }

@@ -82,7 +82,8 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
         ZoneDTO result = zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null);
 
         Assertions.assertThat(result.zoneId()).isEqualTo("z123");
-        Mockito.verify(zoneStateService).markZoneBuilding(Mockito.anyString());
+        Mockito.verify(zoneStateService).save(Mockito.argThat(zone ->
+                ZoneStatus.BUILDING.name().equals(zone.getStatus())));
         Mockito.verify(buildPipelineService).buildZone(Mockito.anyString(), Mockito.any(), Mockito.any());
     }
 

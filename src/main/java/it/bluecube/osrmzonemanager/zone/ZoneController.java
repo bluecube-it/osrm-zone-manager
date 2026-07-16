@@ -24,8 +24,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ZoneController {
 
-    // Must match ZoneService.ZONE_REUSE_MESSAGE — controls 200 vs 201 response
-    private static final String ZONE_REUSE_MESSAGE = "zone already active with same content — reusing";
     private static final String STATUS_DELETED = "deleted";
 
     private final ZoneService zoneService;
@@ -37,7 +35,7 @@ public class ZoneController {
     @PostMapping
     public ResponseEntity<ZoneDTO> createZone(@RequestBody ZoneInputDTO request) {
         ZoneDTO zone = zoneService.createOrReuseZone(request.polygon(), request.lineStrings());
-        boolean reused = ZONE_REUSE_MESSAGE.equals(zone.message());
+        boolean reused = ZoneService.ZONE_REUSE_MESSAGE.equals(zone.message());
 
         ZoneDTO dto = zone.withProcess(null);
         return ResponseEntity.status(reused ? HttpStatus.OK : HttpStatus.CREATED).body(dto);

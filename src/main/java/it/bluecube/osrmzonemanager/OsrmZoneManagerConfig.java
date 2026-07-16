@@ -1,7 +1,6 @@
 package it.bluecube.osrmzonemanager;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Positive;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -32,24 +31,15 @@ public class OsrmZoneManagerConfig {
     @NotBlank
     private String reduceScript = "/app/scripts/reduce.py";
 
-    @Positive
-    private int zoneTtlDays = 90;
-
-    @Positive
-    private int maxActiveZones = 20;
-
     private int osrmPortStart = 5000;
 
     private int vroomPortStart = 3000;
 
     private int osrmDefaultRadius = 50;
 
-    @Positive
-    private int evictorIntervalMinutes = 10;
-
     private boolean osrmMmap = true;
 
-    private long minPbfSize = 1;
+    private long minPbfSize = 1_048_576;
 
     public String getZonesDir() {
         return dataDir + "/zones";

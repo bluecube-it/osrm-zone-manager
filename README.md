@@ -20,7 +20,6 @@ docker run -d \
   -v $(pwd)/config:/config \
   -v osrm-zone-manager-data:/data \
   -e ZONE_TTL_DAYS=90 \
-  -e MAX_ACTIVE_ZONES=20 \
   -e OSRM_DEFAULT_RADIUS=50 \
   -e EVICTOR_INTERVAL_MIN=10 \
   osrm-zone-manager
@@ -82,7 +81,6 @@ Storage layout:
 | `BASE_PBF`             | `/data/base/italy.osm.pbf`                                  | Source PBF path (downloaded if missing)                                  |
 | `GEOFABRIK_URL`        | `https://download.geofabrik.de/europe/italy-latest.osm.pbf` | Auto-download source                                                     |
 | `ZONE_TTL_DAYS`        | `90`                                                        | Evict zones not accessed in N days                                       |
-| `MAX_ACTIVE_ZONES`     | `20`                                                        | Hard cap on concurrent active zones                                      |
 | `OSRM_DEFAULT_RADIUS`  | `50`                                                        | Radiuses injected (meters) for /route and /table                         |
 | `EVICTOR_INTERVAL_MIN` | `10`                                                        | Evictor interval in minutes                                              |
 | `LOG_LEVEL`            | `info`                                                      | Spring log level (mapped to `logging.level.it.bluecube.osrmzonemanager`) |

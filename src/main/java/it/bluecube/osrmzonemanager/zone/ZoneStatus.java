@@ -4,8 +4,8 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Zone lifecycle states. Progression: BUILDING → BUILT → STARTING → ACTIVE
- * (or DEGRADED from ACTIVE, FAILED from any). EVICTING is a terminal teardown state.
+ * Zone lifecycle states. Progression: BUILDING -> BUILT -> STARTING -> ACTIVE
+ * (or DEGRADED from ACTIVE, FAILED from any).
  */
 public enum ZoneStatus {
     BUILDING,
@@ -13,8 +13,7 @@ public enum ZoneStatus {
     STARTING,
     ACTIVE,
     DEGRADED,
-    FAILED,
-    EVICTING;
+    FAILED;
 
     private static final Set<ZoneStatus> IN_PROGRESS = EnumSet.of(BUILDING, BUILT, STARTING);
     private static final Set<ZoneStatus> LIVE = EnumSet.of(ACTIVE, DEGRADED);

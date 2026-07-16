@@ -15,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.ConnectException;
 import java.util.Enumeration;
 import java.util.List;
@@ -31,6 +33,7 @@ public class ProxyService {
     private static final String LOCALHOST = "127.0.0.1";
     private static final String HTTP_SCHEME = "http://";
     private static final String ACCEPT_ENCODING_IDENTITY = "identity";
+    private static final long MAX_PROXY_BODY_BYTES = 50 * 1_048_576L;
 
     private final OsrmZoneManagerConfig config;
     private final RadiusesMiddleware radiusesMiddleware;
@@ -86,7 +89,14 @@ public class ProxyService {
         HttpMethod method = HttpMethod.valueOf(request.getMethod());
 
         try {
-            byte[] requestBody = method == HttpMethod.POST ? request.getInputStream().readAllBytes() : null;
+            byte[] requestBody = null;
+            if (method == HttpMethod.POST) {
+                long contentLength = request.getContentLengthLong();
+                if (contentLength > MAX_PROXY_BODY_BYTES) {
+                    throw new ProxyException("Request body too large: " + contentLength + " bytes (max " + MAX_PROXY_BODY_BYTES + ")");
+                }
+                requestBody = readBounded(request.getInputStream(), MAX_PROXY_BODY_BYTES);
+            }
             ResponseEntity<byte[]> response = executeRequest(method, target, headers, requestBody);
             return ResponseEntity.status(response.getStatusCode())
                     .headers(filterResponseHeaders(response.getHeaders()))
@@ -104,6 +114,21 @@ public class ProxyService {
                     service.name() + " unreachable at " + LOCALHOST + ":" + port + ": " + e.getMessage());
         }
         return new ProxyException(service.name() + " error: " + e.getMessage());
+    }
+
+    private byte[] readBounded(InputStream is, long maxBytes) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = is.read(chunk)) != -1) {
+            total += read;
+            if (total > maxBytes) {
+                throw new ProxyException("Request body exceeds max size: " + maxBytes + " bytes");
+            }
+            buffer.write(chunk, 0, read);
+        }
+        return buffer.toByteArray();
     }
 
     private String buildTargetUrl(int port, String path, String query) {

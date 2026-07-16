@@ -58,6 +58,18 @@ public class PortAllocatorService {
         throw new IllegalStateException("port pool exhausted — tried offset 1.." + PORT_SCAN_RANGE);
     }
 
+    /**
+     * Intentional no-op.
+     *
+     * <p>Ports are allocated per zone by {@link #reservePortPair()} and freed implicitly
+     * when the zone record is deleted from the registry. Keeping this method as a no-op
+     * prevents ports held by FAILED zones (which may still have zombie processes) from
+     * being immediately reused. Once the zone record is removed, {@code reservePortPair}
+     * will consider the ports available again, subject to the OS-level bind check.</p>
+     *
+     * @param kind port kind label (e.g. "osrm" or "vroom")
+     * @param port port number
+     */
     public void releasePort(String kind, int port) {
         log.debug("ReleasePort {} {} (implicit: zone record deletion frees ports)", kind, port);
     }

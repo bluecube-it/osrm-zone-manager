@@ -22,8 +22,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -41,6 +43,7 @@ public class BuildPipelineService {
 
     private static final int SUBPROCESS_TIMEOUT_SECONDS = 600;
     private static final int MAX_CONCURRENT_BUILDS = 3;
+    private static final int MAX_OUTPUT_LINES = 500;
     private static final String FILE_REGION_PBF = "region.osm.pbf";
     private static final String FILE_CUSTOM_WAYS_PBF = "custom_ways.pbf";
     private static final String FILE_COMBINED_PBF = "combined.osm.pbf";
@@ -268,11 +271,14 @@ public class BuildPipelineService {
         pb.redirectErrorStream(true);
         Process process = pb.start();
 
-        List<String> output = new ArrayList<>();
+        Deque<String> output = new ArrayDeque<>();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                output.add(line);
+                output.addLast(line);
+                if (output.size() > MAX_OUTPUT_LINES) {
+                    output.removeFirst();
+                }
                 log.debug("{}", line);
             }
         }
@@ -290,8 +296,9 @@ public class BuildPipelineService {
                     + SUBPROCESS_TIMEOUT_SECONDS + "s: " + String.join(" ", command));
         }
         if (process.exitValue() != 0) {
-            String tail = String.join("\n", output.subList(
-                    Math.max(0, output.size() - 20), output.size()));
+            List<String> tailList = new ArrayList<>(output);
+            String tail = String.join("\n", tailList.subList(
+                    Math.max(0, tailList.size() - 20), tailList.size()));
             throw new BuildException("subprocess failed (rc=" + process.exitValue()
                     + "): " + String.join(" ", command) + " - " + tail);
         }

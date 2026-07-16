@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+
+
 /**
  * Owns all {@link ZoneRepository} access — the single persistence gateway for zone state.
  * Any class outside the {@code zone} package that needs to read or mutate zone persistence
@@ -55,14 +57,6 @@ public class ZoneStateService {
         return zoneRepository.findAll();
     }
 
-    /**
-     * @param statuses status values to filter by
-     * @return zones matching any of the given statuses
-     */
-    List<ZoneEntity> findByStatusIn(List<String> statuses) {
-        return zoneRepository.findByStatusIn(statuses);
-    }
-
     // --- public queries (no entity leak) ---
 
     /**
@@ -81,7 +75,7 @@ public class ZoneStateService {
      */
     @Transactional
     public void deleteById(String zoneId) {
-        zoneRepository.deleteById(zoneId);
+        zoneRepository.deleteByIdIgnoringVersion(zoneId);
     }
 
     // --- domain-specific mutation helpers ---
@@ -178,19 +172,6 @@ public class ZoneStateService {
     }
 
     /**
-     * Transitions zone to EVICTING (terminal teardown state).
-     *
-     * @param zoneId zone identifier
-     */
-    @Transactional
-    public void markZoneEvicting(String zoneId) {
-        zoneRepository.findById(zoneId).ifPresent(zone -> {
-            zone.setStatus(ZoneStatus.EVICTING.name());
-            zoneRepository.save(zone);
-        });
-    }
-
-    /**
      * Conditionally updates status and error if zone currently has the given status.
      *
      * @param zoneId zone identifier
@@ -251,13 +232,4 @@ public class ZoneStateService {
                 .toList();
     }
 
-    /**
-     * @param statuses status values to filter by
-     * @return eviction candidates with last access times
-     */
-    public List<ZoneEvictionCandidate> findEvictionCandidates(List<String> statuses) {
-        return zoneRepository.findByStatusIn(statuses).stream()
-                .map(zone -> new ZoneEvictionCandidate(zone.getZoneId(), zone.getLastAccess()))
-                .toList();
-    }
 }

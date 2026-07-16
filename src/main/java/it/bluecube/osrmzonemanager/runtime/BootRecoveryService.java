@@ -86,7 +86,7 @@ public class BootRecoveryService implements ApplicationRunner {
 
     /**
      * Dispatches a zone to the correct recovery path based on its persisted status.
-     * Unknown or non-actionable statuses (FAILED, EVICTING) are skipped with a warning.
+     * Unknown or non-actionable statuses (FAILED) are skipped with a warning.
      *
      * @param zone the recovery data for the zone
      */
