@@ -77,8 +77,12 @@ class ZoneLifecycleRacesTest {
         zoneRepository.deleteAll();
         Mockito.reset(buildPipelineService, processSupervisorService, pbfDownloadService, portAllocatorService, zoneRepository);
 
-        samplePolygon = objectMapper.readTree(Files.readString(Path.of("src/test/resources/polygon.geojson")));
-        sampleLinestrings = objectMapper.readTree(Files.readString(Path.of("src/test/resources/lineStrings.geojson")));
+        try (var is = getClass().getResourceAsStream("/polygon.geojson")) {
+            samplePolygon = objectMapper.readTree(is);
+        }
+        try (var is = getClass().getResourceAsStream("/lineStrings.geojson")) {
+            sampleLinestrings = objectMapper.readTree(is);
+        }
 
         Path basePbf = Path.of(System.getProperty("java.io.tmpdir"), "osrm-test-data", "base", "italy.osm.pbf");
         Files.createDirectories(basePbf.getParent());
