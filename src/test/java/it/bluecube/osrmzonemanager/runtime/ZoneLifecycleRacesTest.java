@@ -17,6 +17,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -77,12 +78,8 @@ class ZoneLifecycleRacesTest {
         zoneRepository.deleteAll();
         Mockito.reset(buildPipelineService, processSupervisorService, pbfDownloadService, portAllocatorService, zoneRepository);
 
-        try (var is = getClass().getResourceAsStream("/polygon.geojson")) {
-            samplePolygon = objectMapper.readTree(is);
-        }
-        try (var is = getClass().getResourceAsStream("/lineStrings.geojson")) {
-            sampleLinestrings = objectMapper.readTree(is);
-        }
+        samplePolygon = objectMapper.readTree(new ClassPathResource("polygon.geojson").getInputStream());
+        sampleLinestrings = objectMapper.readTree(new ClassPathResource("lineStrings.geojson").getInputStream());
 
         Path basePbf = Path.of(System.getProperty("java.io.tmpdir"), "osrm-test-data", "base", "italy.osm.pbf");
         Files.createDirectories(basePbf.getParent());

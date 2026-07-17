@@ -28,6 +28,7 @@ class BootRecoveryServiceNoZonesIT extends BaseIT {
     @Test
     void shouldReturnEarlyWhenNoZonesInRegistry() throws Exception {
         Mockito.doReturn("/tmp/base.pbf").when(mapsService).ensureBasePbf();
+        Mockito.clearInvocations(mapsService);
 
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
@@ -39,6 +40,7 @@ class BootRecoveryServiceNoZonesIT extends BaseIT {
     @Test
     void shouldReturnEarlyWhenBasePbfCheckFails() throws Exception {
         Mockito.doThrow(new IllegalStateException("pbf boom")).when(mapsService).ensureBasePbf();
+        Mockito.clearInvocations(mapsService);
 
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
