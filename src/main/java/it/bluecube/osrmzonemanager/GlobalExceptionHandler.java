@@ -1,6 +1,7 @@
 package it.bluecube.osrmzonemanager;
 
 import it.bluecube.osrmzonemanager.builder.BuildException;
+import it.bluecube.osrmzonemanager.maps.MissingBasePbfException;
 import it.bluecube.osrmzonemanager.proxy.PolylineDecodeException;
 import it.bluecube.osrmzonemanager.proxy.ProxyException;
 import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
@@ -37,6 +38,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ZoneUnavailableException.class)
     public ResponseEntity<Map<String, String>> handleUnavailable(ZoneUnavailableException e) {
+        return body(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+    }
+
+    @ExceptionHandler(MissingBasePbfException.class)
+    public ResponseEntity<Map<String, String>> handleMissingBasePbf(MissingBasePbfException e) {
         return body(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
     }
 

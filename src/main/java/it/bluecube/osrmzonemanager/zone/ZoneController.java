@@ -73,4 +73,13 @@ public class ZoneController {
                 .message(STATUS_DELETED)
                 .build());
     }
+
+    /**
+     * Force-stops and removes all zones (processes, filesystem, database).
+     */
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAllZones() {
+        zoneService.deleteAllZones();
+        return ResponseEntity.noContent().build();
+    }
 }

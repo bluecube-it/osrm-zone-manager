@@ -4,6 +4,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -16,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.util.function.Supplier;
 
+@Import(TestcontainersConfiguration.class)
 @TestExecutionListeners(
         listeners = {DbCleaner.class},
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS

@@ -12,7 +12,7 @@ traffic and injects DRT radiuses.
 ```bash
 docker build -t osrm-zone-manager .
 
-# /config = persistent (GCS bucket / host dir) — H2 registry
+# /config = persistent (GCS bucket / host dir) — config/backups
 # /data   = ephemeral (emptyDir / tmpfs) — PBF + build artifacts
 docker run -d \
   --name osrm-zone-manager \
@@ -25,9 +25,7 @@ docker run -d \
   osrm-zone-manager
 ```
 
-First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
-(~2GB) into `/data/base/` if missing. Pre-mount a PBF at
-`/data/base/italy.osm.pbf` to skip download.
+Pre-mount PBF at `/data/base/italy.osm.pbf`. Missing PBF returns HTTP 503.
 
 ## API
 
@@ -37,6 +35,7 @@ First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
 | `GET /zones`        | GET      | List zones with status                               |
 | `GET /zones/:id`    | GET      | Zone metadata                                        |
 | `DELETE /zones/:id` | DELETE   | Stop + cleanup zone                                  |
+| `DELETE /zones`     | DELETE   | Stop + cleanup ALL zones                             |
 | `/:id/osrm/*`       | GET/POST | Proxy to zone's osrm-routed (radiuses injected)      |
 | `/:id/vroom/*`      | GET/POST | Proxy to zone's vroom-express                        |
 | `/actuator/health`  | GET      | Healthcheck                                          |
@@ -46,7 +45,7 @@ First `POST /zones` triggers Geofabrik download of `italy-latest.osm.pbf`
 Single container:
 
 - Spring Boot (virtual threads) — gateway + radiuses middleware
-- H2 embedded database (`/config/registrydb`) — zone registry + last_access tracking
+- PostgreSQL database — zone registry + last_access tracking
 - Per active zone (subprocesses, NOT containers):
     - `osrm-routed --algorithm mld -i 127.0.0.1 -p 5XXX /data/zones/<id>/map.osrm`
     - `vroom-express` on `3XXX` (config.yml templated per-zone, points at `5XXX`)
@@ -55,11 +54,11 @@ Single container:
 
 Storage layout:
 
-- `/config` — GCS FUSE bucket (persistent) — H2 database `registrydb.*`
+- `/config` — GCS FUSE bucket (persistent) — zone registry backups/config
 - `/data` — ephemeral (emptyDir / tmpfs) — base PBF + zone build artifacts
-    - `/data/base/italy.osm.pbf` — source PBF (downloaded at boot if missing)
+    - `/data/base/italy.osm.pbf` — source PBF (pre-mounted)
     - `/data/zones/<id>/` — `map.osrm.*`, `vroom-express/config.yml`, `polygon.geojson`, `lineStrings.geojson`
-- On boot: reads H2 registry → rebuilds zones from stored polygon/lineStrings
+- On boot: reads PostgreSQL registry → rebuilds zones from stored polygon/lineStrings
 
 ## Versions
 
@@ -74,16 +73,20 @@ Storage layout:
 
 ## Environment
 
-| Var                    | Default                                                     | Purpose                                                                  |
-|------------------------|-------------------------------------------------------------|--------------------------------------------------------------------------|
-| `CONFIG_DIR`           | `/config`                                                   | GCS FUSE mount (persistent) — H2 database                                |
-| `DATA_DIR`             | `/data`                                                     | Ephemeral data root (emptyDir / tmpfs)                                   |
-| `BASE_PBF`             | `/data/base/italy.osm.pbf`                                  | Source PBF path (downloaded if missing)                                  |
-| `GEOFABRIK_URL`        | `https://download.geofabrik.de/europe/italy-latest.osm.pbf` | Auto-download source                                                     |
-| `ZONE_TTL_DAYS`        | `90`                                                        | Evict zones not accessed in N days                                       |
-| `OSRM_DEFAULT_RADIUS`  | `50`                                                        | Radiuses injected (meters) for /route and /table                         |
-| `EVICTOR_INTERVAL_MIN` | `10`                                                        | Evictor interval in minutes                                              |
-| `LOG_LEVEL`            | `info`                                                      | Spring log level (mapped to `logging.level.it.bluecube.osrmzonemanager`) |
+| Var                    | Default                    | Purpose                                                                  |
+|------------------------|----------------------------|--------------------------------------------------------------------------|
+| `CONFIG_DIR`           | `/config`                  | GCS FUSE mount (persistent) — config/nfs backup                          |
+| `DATA_DIR`             | `/data`                    | Ephemeral data root (emptyDir / tmpfs)                                   |
+| `BASE_PBF`             | `/data/base/italy.osm.pbf` | Source PBF path (must exist, no auto-download)                           |
+| `DB_HOST`              | `localhost`                | PostgreSQL host                                                          |
+| `DB_PORT`              | `5432`                     | PostgreSQL port                                                          |
+| `DB_NAME`              | `osrm_zone_manager`        | PostgreSQL database name                                                 |
+| `DB_USERNAME`          | `osrm`                     | PostgreSQL username                                                      |
+| `DB_PASSWORD`          | `osrm`                     | PostgreSQL password                                                      |
+| `ZONE_TTL_DAYS`        | `90`                       | Evict zones not accessed in N days                                       |
+| `OSRM_DEFAULT_RADIUS`  | `50`                       | Radiuses injected (meters) for /route and /table                         |
+| `EVICTOR_INTERVAL_MIN` | `10`                       | Evictor interval in minutes                                              |
+| `LOG_LEVEL`            | `info`                     | Spring log level (mapped to `logging.level.it.bluecube.osrmzonemanager`) |
 
 ## License
 

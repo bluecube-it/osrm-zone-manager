@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -77,12 +76,7 @@ public class ZoneService {
      * @return the zone DTO (newly registered as BUILDING, or reused/active)
      */
     public ZoneDTO createOrReuseZone(JsonNode polygon, JsonNode lineStrings) {
-        String basePbf;
-        try {
-            basePbf = pbfDownloadService.ensureBasePbf();
-        } catch (IOException e) {
-            throw new IllegalStateException("base PBF check failed: " + e.getMessage(), e);
-        }
+        String basePbf = pbfDownloadService.ensureBasePbf();
         String baseMtime = String.valueOf(computeFileMtime(basePbf));
         String polygonHash = HashUtils.sha256(objectMapper.writeValueAsBytes(polygon));
         String lineStringsHash = lineStrings != null ? HashUtils.sha256(objectMapper.writeValueAsBytes(lineStrings)) : "";
@@ -174,6 +168,35 @@ public class ZoneService {
         log.info("Zone {}: deleted", zoneId);
     }
 
+    /**
+     * Force-stops all zones, cancels pending futures, removes all zone directories,
+     * and deletes all zone records from the registry.
+     */
+    @Transactional
+    public void deleteAllZones() {
+        processSupervisor.stopAllZones();
+
+        List<ZoneEntity> zones = zoneStateService.findAll();
+        for (ZoneEntity zone : zones) {
+            String zoneId = zone.getZoneId();
+            String status = zone.getStatus();
+
+            if (ZoneStatus.BUILDING.name().equals(status)) {
+                cancelFuture(buildTasks.remove(zoneId));
+            }
+            if (ZoneStatus.BUILT.name().equals(status) || ZoneStatus.STARTING.name().equals(status)) {
+                cancelFuture(startTasks.remove(zoneId));
+            }
+
+            removeZoneDirectory(zoneId);
+            processSupervisor.removeZoneLock(zoneId);
+        }
+
+        buildTasks.clear();
+        startTasks.clear();
+        zoneStateService.deleteAll();
+        log.info("All zones cleaned: {} removed", zones.size());
+    }
 
     /**
      * Attempts to reuse an existing zone whose content hash matches the incoming request.

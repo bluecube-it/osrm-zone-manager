@@ -78,6 +78,14 @@ public class ZoneStateService {
         zoneRepository.deleteByIdIgnoringVersion(zoneId);
     }
 
+    /**
+     * Deletes all zone records.
+     */
+    @Transactional
+    public void deleteAll() {
+        zoneRepository.deleteAllInBatch();
+    }
+
     // --- domain-specific mutation helpers ---
 
     /**

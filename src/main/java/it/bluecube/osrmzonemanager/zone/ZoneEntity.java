@@ -1,8 +1,8 @@
 package it.bluecube.osrmzonemanager.zone;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
@@ -16,7 +16,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Persistent zone record stored in H2. Tracks zone lifecycle status, ports, PIDs,
+ * Persistent zone record stored in PostgreSQL. Tracks zone lifecycle status, ports, PIDs,
  * content hashes, and source geojson.
  */
 @Entity
@@ -64,11 +64,11 @@ public class ZoneEntity {
     @Builder.Default
     private String error = "";
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     @ToString.Exclude
     private String polygonGeojson;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     @ToString.Exclude
     private String lineStringsGeojson;
 

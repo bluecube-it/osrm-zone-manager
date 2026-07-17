@@ -11,10 +11,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import com.github.tomakehurst.wiremock.client.WireMock;
 import org.assertj.core.api.Assertions;
 
-class MapsServiceEnsureBasePbfDownloadFailureIT extends BaseIT {
+class MapsServiceEnsureBasePbfMissingIT extends BaseIT {
 
     @Autowired
     private MapsService mapsService;
@@ -33,16 +32,9 @@ class MapsServiceEnsureBasePbfDownloadFailureIT extends BaseIT {
     }
 
     @Test
-    void shouldThrowWhenDownloadFailsAndCleanTmpFile() throws Exception {
-        String urlPath = "/test.pbf";
-        WireMock.stubFor(WireMock.get(WireMock.urlEqualTo(urlPath))
-                .willReturn(WireMock.aResponse().withStatus(500).withBody(new byte[0])));
-
+    void shouldThrowWhenPbfMissing() {
         Assertions.assertThatThrownBy(() -> mapsService.ensureBasePbf())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("download failed");
-
-        Path tmp = Path.of(config.getBasePbf() + ".tmp");
-        Assertions.assertThat(tmp).doesNotExist();
+                .isInstanceOf(MissingBasePbfException.class)
+                .hasMessageContaining("Base PBF not found");
     }
 }

@@ -8,6 +8,7 @@ import it.bluecube.osrmzonemanager.zone.ZoneEntity;
 import it.bluecube.osrmzonemanager.zone.ZoneInputDTO;
 import it.bluecube.osrmzonemanager.zone.ZoneRepository;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
+import it.bluecube.test.integration_test.TestcontainersConfiguration;
 import jakarta.persistence.EntityManager;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -37,10 +39,11 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.concurrent.CompletableFuture;
 
+@Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(locations = "classpath:application-test.properties")
-class ZoneLifecycleRacesTest {
+class ZoneLifecycleRacesIT {
 
     @Autowired
     private MockMvc mockMvc;

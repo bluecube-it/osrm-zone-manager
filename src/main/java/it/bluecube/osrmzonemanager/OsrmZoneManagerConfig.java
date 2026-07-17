@@ -20,9 +20,6 @@ public class OsrmZoneManagerConfig {
     private String basePbf = "/data/base/italy.osm.pbf";
 
     @NotBlank
-    private String geofabrikUrl = "https://download.geofabrik.de/europe/italy-latest.osm.pbf";
-
-    @NotBlank
     private String carLua = "/opt/car.lua";
 
     @NotBlank
