@@ -172,6 +172,7 @@ public class ProcessSupervisorService {
             command.add(FLAG_MMAP);
         }
 
+        log.info("Zone {}: starting osrm-routed on port {} (map={})", info.zoneId, info.osrmPort, mapBase);
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.inheritIO();
         try {
@@ -206,6 +207,7 @@ public class ProcessSupervisorService {
             return;
         }
 
+        log.info("Zone {}: starting vroom-express on port {} (dir={})", info.zoneId, info.vroomPort, vroomDir);
         ProcessBuilder pb = new ProcessBuilder(
                 BINARY_NODE, Path.of(config.getVroomExpressDir(), FILE_SRC, FILE_INDEX_JS).toString()
         );

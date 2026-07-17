@@ -263,7 +263,7 @@ public class BuildPipelineService {
      * @throws IOException    on I/O failure
      */
     protected void runSubprocess(List<String> command, File cwd) throws IOException {
-        log.debug("Run: {}", String.join(" ", command));
+        log.info("Starting subprocess: {}", String.join(" ", command));
         ProcessBuilder pb = new ProcessBuilder(command);
         if (cwd != null) {
             pb.directory(cwd);
