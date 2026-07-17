@@ -12,6 +12,7 @@ import it.bluecube.test.TestBuilders;
 import it.bluecube.test.integration_test.BaseIT;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -133,6 +134,17 @@ class BuildPipelineServiceBuildZoneWithLineStringsIT extends BaseIT {
         JsonNode polygon = TestBuilders.samplePolygon();
         JsonNode lineStrings = TestBuilders.sampleLinestrings();
         BuildResult result = spyBuildPipelineService.buildZone(zoneId, polygon, lineStrings).get();
+
+        ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(spyBuildPipelineService, Mockito.atLeastOnce()).runSubprocess(captor.capture(), ArgumentMatchers.any());
+        List<List<String>> invocations = captor.getAllValues();
+        Optional<List<String>> reduceCommand = invocations.stream()
+                .filter(cmd -> !cmd.isEmpty() && "python3".equals(cmd.get(0)))
+                .findFirst();
+
+        Assertions.assertThat(reduceCommand).isPresent();
+        Assertions.assertThat(reduceCommand.get()).hasSize(5);
+        Assertions.assertThat(reduceCommand.get().get(2)).isEqualTo(zoneDir.resolve("region.osm.pbf").toString());
 
         Assertions.assertThat(result.ok()).isTrue();
         Assertions.assertThat(result.osrmPort()).isEqualTo(osrmPort);

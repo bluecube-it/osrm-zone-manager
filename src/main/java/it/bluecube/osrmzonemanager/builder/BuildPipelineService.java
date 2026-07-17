@@ -183,7 +183,7 @@ public class BuildPipelineService {
         if (lineStringsPath != null) {
             runSubprocess(List.of(
                     CMD_PYTHON, config.getReduceScript(),
-                    config.getBasePbf(), lineStringsPath.toString(), customPbf.toString()
+                    regionPbf.toString(), lineStringsPath.toString(), customPbf.toString()
             ), zoneDir.toFile());
             runSubprocess(List.of(
                     CMD_OSMIUM, FLAG_MERGE, regionPbf.toString(), customPbf.toString(),
