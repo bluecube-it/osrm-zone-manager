@@ -11,9 +11,6 @@ import org.springframework.validation.annotation.Validated;
 public class OsrmZoneManagerConfig {
 
     @NotBlank
-    private String configDir = "/config";
-
-    @NotBlank
     private String dataDir = "/data";
 
     @NotBlank

@@ -74,7 +74,6 @@ Storage layout:
 
 | Var                    | Default                    | Purpose                                                                  |
 |------------------------|----------------------------|--------------------------------------------------------------------------|
-| `CONFIG_DIR`           | `/config`                  | GCS FUSE mount (persistent) — config/nfs backup                          |
 | `DATA_DIR`             | `/data`                    | Ephemeral data root (emptyDir / tmpfs)                                   |
 | `BASE_PBF`             | `/data/base/italy.osm.pbf` | Source PBF path (must exist, no auto-download)                           |
 | `DB_HOST`              | `localhost`                | PostgreSQL host                                                          |
