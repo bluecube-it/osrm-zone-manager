@@ -1,16 +1,15 @@
 package it.bluecube.osrmzonemanager.proxy;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
-import it.bluecube.test.BaseUnitTest;
 import it.bluecube.osrmzonemanager.zone.ZoneService;
+import it.bluecube.test.BaseUnitTest;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.client.RestClient;
-
-import org.assertj.core.api.Assertions;
-import org.mockito.Mockito;
 
 class ProxyServiceBuildOsrmQueryTest extends BaseUnitTest {
 

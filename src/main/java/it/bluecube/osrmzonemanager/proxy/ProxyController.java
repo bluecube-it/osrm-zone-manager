@@ -21,7 +21,7 @@ public class ProxyController {
      * This method handles both GET and POST HTTP methods and dynamically
      * constructs the forwarded request path and query parameters.
      *
-     * @param zoneId the identifier of the zone to which the request should be forwarded
+     * @param zoneId  the identifier of the zone to which the request should be forwarded
      * @param request the original HttpServletRequest containing request details such as headers, query parameters, and body
      * @return a ResponseEntity containing the response from the proxied OSRM service
      */
@@ -37,7 +37,7 @@ public class ProxyController {
      * This method handles both GET and POST HTTP methods and dynamically
      * constructs the forwarded request path and query parameters.
      *
-     * @param zoneId the identifier of the zone to which the request should be forwarded
+     * @param zoneId  the identifier of the zone to which the request should be forwarded
      * @param request the original HttpServletRequest containing request details such as headers, query parameters, and body
      * @return a ResponseEntity containing the response from the proxied VROOM service
      */

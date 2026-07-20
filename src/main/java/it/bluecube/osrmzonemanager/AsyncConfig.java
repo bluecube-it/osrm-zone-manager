@@ -20,7 +20,7 @@ public class AsyncConfig {
      * Executor for all zone-manager background tasks (recovery, post-build start).
      *
      * @return a {@link SimpleAsyncTaskExecutor} spawning virtual threads
-     *         with a {@code zone-mgr-} name prefix for log and thread-dump readability
+     * with a {@code zone-mgr-} name prefix for log and thread-dump readability
      */
     @Bean
     public Executor zoneManagerTaskExecutor() {

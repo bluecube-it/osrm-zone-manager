@@ -2,7 +2,6 @@ package it.bluecube.osrmzonemanager.runtime;
 
 import it.bluecube.osrmzonemanager.builder.BuildPipelineService;
 import it.bluecube.osrmzonemanager.maps.MapsService;
-import it.bluecube.osrmzonemanager.runtime.ProcessSupervisorService;
 import it.bluecube.test.integration_test.BaseIT;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;

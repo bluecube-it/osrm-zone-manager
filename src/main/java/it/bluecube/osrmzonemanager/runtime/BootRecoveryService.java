@@ -171,7 +171,7 @@ public class BootRecoveryService implements ApplicationRunner {
      *
      * @param zone the recovery data for the zone
      * @return {@code true} if the hashes match or no polygon file exists on disk;
-     *         {@code false} if the file is unreadable or the hash differs
+     * {@code false} if the file is unreadable or the hash differs
      */
     private boolean polygonHashMatches(ZoneRecoveryDTO zone) {
         Path polygonFile = Path.of(config.getZonesDir(), zone.zoneId(), ZoneFiles.POLYGON_GEOJSON);

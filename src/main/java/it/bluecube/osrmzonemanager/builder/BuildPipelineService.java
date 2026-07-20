@@ -22,12 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -68,12 +63,11 @@ public class BuildPipelineService {
     private static final String FLAG_P = "-p";
     private static final String FLAG_O = "-o";
     private static final String FLAG_OVERWRITE = "--overwrite";
-    private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
-
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
     private final PortAllocatorService portAllocator;
     private final ObjectMapper objectMapper;
+    private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
 
     /**
      * Initiates the async build pipeline for a zone.

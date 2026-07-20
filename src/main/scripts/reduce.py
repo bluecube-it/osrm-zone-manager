@@ -18,10 +18,9 @@ as merge input — NOT directly fed to osrm-extract.
 
 import json
 import os
-import sys
-
 import osmium
 import osmium.osm as osm
+import sys
 from shapely.geometry import shape
 
 
@@ -34,8 +33,8 @@ class OSMDataExtractor(osmium.SimpleHandler):
 
     def __init__(self):
         super().__init__()
-        self.nodes = {}   # node_id -> (lon, lat)
-        self.ways = {}    # way_id -> {'tags': {...}, 'coords': [...]}
+        self.nodes = {}  # node_id -> (lon, lat)
+        self.ways = {}  # way_id -> {'tags': {...}, 'coords': [...]}
 
     def node(self, n):
         self.nodes[n.id] = (n.location.lon, n.location.lat)
@@ -63,7 +62,7 @@ class OSMCreator:
         self.osm_data = osm_data
         self.node_id = 1
         self.way_id = 1
-        self.node_cache = {}   # (lon, lat) rounded -> node_id (snapping fuse)
+        self.node_cache = {}  # (lon, lat) rounded -> node_id (snapping fuse)
 
     def find_matching_tags(self, linestring):
         """Closest original OSM way by coordinate-intersection score."""

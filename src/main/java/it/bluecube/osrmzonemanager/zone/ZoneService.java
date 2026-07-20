@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 @Service
 @RequiredArgsConstructor
 public class ZoneService {
+    static final String ZONE_REUSE_MESSAGE = "zone already active with same content — reusing";
     // String-based for entity status comparison; mirrors ZoneStatus.isInProgress()
     private static final Set<String> IN_PROGRESS_STATUSES = Set.of(
             ZoneStatus.BUILDING.name(), ZoneStatus.BUILT.name(), ZoneStatus.STARTING.name()
@@ -50,7 +51,6 @@ public class ZoneService {
             ZoneStatus.ACTIVE.name(), ZoneStatus.DEGRADED.name(), ZoneStatus.STARTING.name()
     );
     private static final int ZONE_ID_HEX_LENGTH = 12;
-    static final String ZONE_REUSE_MESSAGE = "zone already active with same content — reusing";
     private static final String ZONE_BUILD_STARTED_MESSAGE = "build started — poll GET /zones/{id} for status";
     private static final byte ZONE_ID_SEPARATOR = (byte) '|';
 
@@ -71,7 +71,7 @@ public class ZoneService {
     /**
      * Creates or reuses a zone for the given polygon/lineStrings input.
      *
-     * @param polygon    required GeoJSON polygon
+     * @param polygon     required GeoJSON polygon
      * @param lineStrings optional GeoJSON lineStrings
      * @return the zone DTO (newly registered as BUILDING, or reused/active)
      */
@@ -201,8 +201,8 @@ public class ZoneService {
     /**
      * Attempts to reuse an existing zone whose content hash matches the incoming request.
      *
-     * @param existing      the existing zone entity with matching content
-     * @param polygonHash   the incoming request's polygon hash
+     * @param existing    the existing zone entity with matching content
+     * @param polygonHash the incoming request's polygon hash
      * @return the zone entity if reuse succeeded, or empty if the caller should rebuild
      * @throws IllegalStateException if the zone is in-progress (conflict)
      */
@@ -244,17 +244,17 @@ public class ZoneService {
     }
 
     /**
-     * @param zoneId        the zone identifier
-     * @param polygon       source GeoJSON polygon
-     * @param lineStrings   source GeoJSON lineStrings (may be null)
-     * @param polygonHash   SHA-256 of serialized polygon
+     * @param zoneId          the zone identifier
+     * @param polygon         source GeoJSON polygon
+     * @param lineStrings     source GeoJSON lineStrings (may be null)
+     * @param polygonHash     SHA-256 of serialized polygon
      * @param lineStringsHash SHA-256 of serialized lineStrings (empty if null)
-     * @param baseMtime     base PBF file modification time as string
-     * @param ports         {osrmPort, vroomPort}
+     * @param baseMtime       base PBF file modification time as string
+     * @param ports           {osrmPort, vroomPort}
      * @return the constructed new zone entity in BUILDING state
      */
     private ZoneEntity buildZoneEntity(String zoneId, JsonNode polygon, JsonNode lineStrings,
-                                        String polygonHash, String lineStringsHash, String baseMtime, int[] ports) {
+                                       String polygonHash, String lineStringsHash, String baseMtime, int[] ports) {
         return ZoneEntity.builder()
                 .zoneId(zoneId)
                 .polygonHash(polygonHash)
@@ -305,9 +305,9 @@ public class ZoneService {
     }
 
     /**
-     * @param zoneId       the zone identifier
-     * @param polygon      source GeoJSON polygon
-     * @param lineStrings  source GeoJSON lineStrings (may be null)
+     * @param zoneId      the zone identifier
+     * @param polygon     source GeoJSON polygon
+     * @param lineStrings source GeoJSON lineStrings (may be null)
      */
     private void launchBuild(String zoneId, JsonNode polygon, JsonNode lineStrings) {
         CompletableFuture<BuildResult> buildFuture = buildPipelineService.buildZone(zoneId, polygon, lineStrings);
@@ -319,8 +319,8 @@ public class ZoneService {
     // --- build/start lifecycle ---
 
     /**
-     * @param zoneId  the zone identifier
-     * @param result  the build result (null or failed → skip)
+     * @param zoneId the zone identifier
+     * @param result the build result (null or failed → skip)
      */
     private void startAfterBuild(String zoneId, BuildResult result) {
         if (result == null || !result.ok()) {
@@ -357,8 +357,8 @@ public class ZoneService {
     // --- crypto / json helpers ---
 
     /**
-     * @param polygon      source GeoJSON polygon
-     * @param lineStrings  source GeoJSON lineStrings (may be null)
+     * @param polygon     source GeoJSON polygon
+     * @param lineStrings source GeoJSON lineStrings (may be null)
      * @return combined bytes for zone ID generation
      */
     private byte[] sha256InputBytes(JsonNode polygon, JsonNode lineStrings) {

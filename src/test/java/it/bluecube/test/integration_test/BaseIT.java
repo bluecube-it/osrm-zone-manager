@@ -38,18 +38,21 @@ public abstract class BaseIT {
     @Autowired
     protected PlatformTransactionManager transactionManager;
 
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("osrm.zone-manager.base-pbf", () -> tempDir.resolve("italy.osm.pbf").toString());
+    }
+
     protected void runInTransaction(Runnable action) {
         new org.springframework.transaction.support.TransactionTemplate(transactionManager)
-                .execute(status -> { action.run(); return null; });
+                .execute(status -> {
+                    action.run();
+                    return null;
+                });
     }
 
     protected <T> T runInTransaction(Supplier<T> action) {
         return new org.springframework.transaction.support.TransactionTemplate(transactionManager)
                 .execute(status -> action.get());
-    }
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("osrm.zone-manager.base-pbf", () -> tempDir.resolve("italy.osm.pbf").toString());
     }
 }

@@ -2,15 +2,15 @@ package it.bluecube.osrmzonemanager.builder;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
-import it.bluecube.test.BaseUnitTest;
 import it.bluecube.osrmzonemanager.zone.ZonePorts;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
+import it.bluecube.test.BaseUnitTest;
 import it.bluecube.test.TestBuilders;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.assertj.core.api.Assertions;
-import org.mockito.Mockito;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 

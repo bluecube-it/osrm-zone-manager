@@ -2,10 +2,9 @@
 
 Single-container multi-zone OSRM + VROOM orchestrator.
 
-One Docker container manages multiple routing zones (polygon-bound + optional
-custom lineStrings). Each active zone runs as `osrm-routed` + `vroom-express`
-subprocesses on loopback ports. Spring Boot gateway on `:8080` proxies per-zone
-traffic and injects DRT radiuses.
+One Docker container manages multiple routing zones (polygon-bound + optional custom lineStrings). Each active zone runs
+as `osrm-routed` + `vroom-express`
+subprocesses on loopback ports. Spring Boot gateway on `:8080` proxies per-zone traffic and injects DRT radiuses.
 
 ## Quick start
 

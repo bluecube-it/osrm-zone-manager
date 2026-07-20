@@ -21,8 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-import org.assertj.core.api.Assertions;
-
 class BootRecoveryServiceRecoverBuildingZoneIT extends BaseIT {
 
     @Autowired

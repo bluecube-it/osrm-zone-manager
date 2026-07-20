@@ -24,17 +24,15 @@ import java.util.concurrent.CompletableFuture;
 
 class ZoneControllerDeleteZoneIT extends BaseIT {
 
+    private final String zoneId = "zonedel123456";
     @MockitoBean
     private BuildPipelineService buildPipelineService;
     @MockitoBean
     private ProcessSupervisorService processSupervisorService;
     @MockitoBean
     private MapsService pbfDownloadService;
-
     @Autowired
     private ZoneRepository zoneRepository;
-
-    private final String zoneId = "zonedel123456";
 
     @BeforeEach
     void setUp() throws Exception {

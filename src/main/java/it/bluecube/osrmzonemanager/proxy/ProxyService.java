@@ -98,6 +98,9 @@ public class ProxyService {
                 requestBody = readBounded(request.getInputStream(), MAX_PROXY_BODY_BYTES);
             }
             ResponseEntity<byte[]> response = executeRequest(method, target, headers, requestBody);
+            if (response.getStatusCode().isError()) {
+                log.warn("Zone {} {} forwarded error response: {}", service.name(), target, response.getStatusCode());
+            }
             return ResponseEntity.status(response.getStatusCode())
                     .headers(filterResponseHeaders(response.getHeaders()))
                     .body(response.getBody());
@@ -139,7 +142,7 @@ public class ProxyService {
         return target;
     }
 
-    private ResponseEntity<byte[]> executeRequest(HttpMethod method, String target, HttpHeaders headers, byte[] body) {
+    ResponseEntity<byte[]> executeRequest(HttpMethod method, String target, HttpHeaders headers, byte[] body) {
         var spec = proxyRestClient.method(method)
                 .uri(target)
                 .headers(h -> h.addAll(headers));

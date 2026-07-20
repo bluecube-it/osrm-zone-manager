@@ -6,12 +6,10 @@ import it.bluecube.osrmzonemanager.zone.ZoneRepository;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
 import it.bluecube.test.TestBuilders;
 import it.bluecube.test.integration_test.BaseIT;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
-import org.assertj.core.api.Assertions;
 
 class PortAllocatorServiceReservePortPairIT extends BaseIT {
 

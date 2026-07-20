@@ -1,9 +1,8 @@
 package it.bluecube.osrmzonemanager;
 
 import it.bluecube.test.BaseUnitTest;
-import org.junit.jupiter.api.Test;
-
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 class HashUtilsSha256Test extends BaseUnitTest {
 

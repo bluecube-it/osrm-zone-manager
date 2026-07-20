@@ -10,6 +10,7 @@ import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
 import it.bluecube.test.TestBuilders;
 import it.bluecube.test.integration_test.BaseIT;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
@@ -24,8 +25,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
-
-import org.assertj.core.api.Assertions;
 
 class BuildPipelineServiceBuildZoneFailureIT extends BaseIT {
 

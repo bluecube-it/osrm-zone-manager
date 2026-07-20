@@ -8,12 +8,11 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 
 public class TestBuilders {
-    private static final JsonMapper MAPPER = JsonMapper.builder().build();
-
     public static final String SAMPLE_POLYGON_GEOJSON = """
             {"type":"Polygon","coordinates":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}""";
     public static final String SAMPLE_LINE_STRINGS_GEOJSON = """
             {"type":"FeatureCollection","features":[]}""";
+    private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
     public static JsonNode samplePolygon() {
         return readTree(SAMPLE_POLYGON_GEOJSON);

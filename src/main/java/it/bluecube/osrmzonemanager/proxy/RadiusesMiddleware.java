@@ -52,7 +52,7 @@ public class RadiusesMiddleware {
      * Advances the cursor past one variable-length signed value in an encoded polyline.
      *
      * @param encoded the polyline string
-     * @param cursor a single-element array holding the current position; updated in place
+     * @param cursor  a single-element array holding the current position; updated in place
      * @throws IllegalArgumentException if the string ends unexpectedly or contains an invalid character
      */
     private static void decodeNext(String encoded, int[] cursor) {
@@ -76,7 +76,7 @@ public class RadiusesMiddleware {
      *
      * @param path the request path
      * @return an {@link Optional} containing the parsed {@link RouteInfo},
-     *         or empty if the path doesn't match the route/table pattern
+     * or empty if the path doesn't match the route/table pattern
      */
     public Optional<RouteInfo> extractRouteInfo(String path) {
         if (path == null) {
@@ -139,7 +139,7 @@ public class RadiusesMiddleware {
      * @param headerRadius  optional radius override from a request header
      * @return the query string with {@code radiuses} injected (or unchanged if not applicable)
      * @throws IllegalArgumentException if the client-supplied radiuses count doesn't match the coordinate count
-     * @throws PolylineDecodeException if the path contains a malformed polyline segment
+     * @throws PolylineDecodeException  if the path contains a malformed polyline segment
      */
     public String injectRadiusesQuery(String originalQuery, String path, int defaultRadius, Integer headerRadius) {
         Optional<RouteInfo> info = extractRouteInfo(path);
@@ -180,7 +180,7 @@ public class RadiusesMiddleware {
      * Extracts and counts the points in a {@code polyline(...)} / {@code polyline6(...)} segment.
      *
      * @param coordPart the full coordinate segment, including the prefix and closing parenthesis
-     * @param prefix   the polyline variant prefix ({@link #POLYLINE_PREFIX} or {@link #POLYLINE6_PREFIX})
+     * @param prefix    the polyline variant prefix ({@link #POLYLINE_PREFIX} or {@link #POLYLINE6_PREFIX})
      * @return the number of decoded coordinate pairs, or {@code 0} if the segment is empty
      * @throws PolylineDecodeException if the encoded payload is malformed
      */

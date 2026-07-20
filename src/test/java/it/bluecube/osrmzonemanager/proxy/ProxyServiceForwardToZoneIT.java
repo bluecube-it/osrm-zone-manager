@@ -1,10 +1,12 @@
 package it.bluecube.osrmzonemanager.proxy;
 
-import it.bluecube.test.integration_test.BaseIT;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import it.bluecube.osrmzonemanager.zone.ZoneDTO;
 import it.bluecube.osrmzonemanager.zone.ZoneService;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
 import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
+import it.bluecube.test.integration_test.BaseIT;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,9 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
-import com.github.tomakehurst.wiremock.client.WireMock;
-import org.assertj.core.api.Assertions;
 
 class ProxyServiceForwardToZoneIT extends BaseIT {
 

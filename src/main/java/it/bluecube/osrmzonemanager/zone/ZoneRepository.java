@@ -12,7 +12,7 @@ import org.springframework.stereotype.Repository;
 public interface ZoneRepository extends JpaRepository<ZoneEntity, String> {
 
     /**
-     * @param osrmPort OSRM port number
+     * @param osrmPort  OSRM port number
      * @param vroomPort Vroom port number
      * @return true if any zone uses either port
      */

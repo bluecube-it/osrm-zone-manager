@@ -6,7 +6,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 
-
 class RadiusesMiddlewareTest extends BaseUnitTest {
 
     private RadiusesMiddleware middleware;

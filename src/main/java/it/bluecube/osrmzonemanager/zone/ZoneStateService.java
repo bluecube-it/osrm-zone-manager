@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 
 
-
 /**
  * Owns all {@link ZoneRepository} access — the single persistence gateway for zone state.
  * Any class outside the {@code zone} package that needs to read or mutate zone persistence
@@ -42,6 +41,7 @@ public class ZoneStateService {
     }
 
     // package-private — only ZoneService (same package) uses these entity returns
+
     /**
      * @param zone zone entity to save
      * @return the saved zone entity
@@ -147,8 +147,8 @@ public class ZoneStateService {
     /**
      * Transitions zone to ACTIVE, records PIDs, resets error.
      *
-     * @param zoneId  zone identifier
-     * @param osrmPid OSRM process ID
+     * @param zoneId   zone identifier
+     * @param osrmPid  OSRM process ID
      * @param vroomPid Vroom process ID
      */
     @Transactional

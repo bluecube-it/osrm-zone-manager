@@ -2,7 +2,6 @@ package it.bluecube.osrmzonemanager.runtime;
 
 import it.bluecube.osrmzonemanager.builder.BuildPipelineService;
 import it.bluecube.osrmzonemanager.maps.MapsService;
-import it.bluecube.osrmzonemanager.runtime.ProcessSupervisorService;
 import it.bluecube.osrmzonemanager.zone.ZoneEntity;
 import it.bluecube.osrmzonemanager.zone.ZoneRepository;
 import it.bluecube.test.TestBuilders;

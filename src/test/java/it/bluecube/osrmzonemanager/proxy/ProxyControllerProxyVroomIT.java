@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager.proxy;
 
+import com.github.tomakehurst.wiremock.client.WireMock;
 import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.zone.ZoneEntity;
 import it.bluecube.osrmzonemanager.zone.ZoneRepository;
@@ -12,8 +13,6 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
-import com.github.tomakehurst.wiremock.client.WireMock;
 
 class ProxyControllerProxyVroomIT extends BaseIT {
 
@@ -74,6 +73,25 @@ class ProxyControllerProxyVroomIT extends BaseIT {
                 .expectStatus().isEqualTo(503)
                 .expectBody()
                 .jsonPath("$.error").exists();
+    }
+
+    @Test
+    void shouldForwardVroomErrorResponseUnchanged() {
+        String zoneId = saveActiveZone();
+        String vroomError = "{\"code\":2,\"error\":\"Invalid JSON object in request, please add vehicles and jobs or shipments to the object body\"}";
+
+        WireMock.stubFor(WireMock.post(WireMock.urlPathEqualTo("/"))
+                .willReturn(WireMock.aResponse()
+                        .withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(vroomError)));
+
+        restTestClient.post()
+                .uri("/{zoneId}/vroom/", zoneId)
+                .body("{\"vehicles\":[{\"id\":1,\"capacity\":[-5]}]}")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(String.class).isEqualTo(vroomError);
     }
 
     private String saveActiveZone() {

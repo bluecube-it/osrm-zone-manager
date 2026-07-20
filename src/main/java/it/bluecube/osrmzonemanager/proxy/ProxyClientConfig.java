@@ -2,20 +2,19 @@ package it.bluecube.osrmzonemanager.proxy;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
+import java.util.function.Predicate;
 
 /**
- * Configuration class for creating and managing the proxy HTTP client used to interact with external services.
+ * Configuration class for the proxy-to-zone HTTP client.
  * <p>
- * This configuration defines a {@link RestClient} bean customized with timeout settings for establishing connections
- * and reading data. The client is optimized for scenarios involving long-running operations and slow network connections,
- * providing better resilience and reliability when interacting with proxy services.
- * <p>
- * Components defined in this configuration can be injected into other Spring-managed components or services
- * wherever a RestClient instance is required for proxy communication.
+ * This {@link RestClient} bean is intentionally scoped only to forwarding requests to zone OSRM/VROOM
+ * subprocesses. It does not throw on 4xx/5xx responses so that the origin response is returned
+ * unchanged to the caller.
  */
 @Configuration
 public class ProxyClientConfig {
@@ -25,8 +24,14 @@ public class ProxyClientConfig {
         factory.setConnectTimeout(Duration.ofMinutes(2));
         factory.setReadTimeout(Duration.ofMinutes(2));
 
+        Predicate<HttpStatusCode> isErrorResponse = HttpStatusCode::isError;
+        RestClient.ResponseSpec.ErrorHandler noop = (request, response) -> {
+            // No-op: don't throw. Body already consumed by retrieve().toEntity().
+        };
+
         return RestClient.builder()
                 .requestFactory(factory)
+                .defaultStatusHandler(isErrorResponse, noop)
                 .build();
     }
 }

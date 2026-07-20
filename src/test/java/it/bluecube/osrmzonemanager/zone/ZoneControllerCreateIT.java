@@ -1,10 +1,10 @@
 package it.bluecube.osrmzonemanager.zone;
 
+import it.bluecube.osrmzonemanager.HashUtils;
 import it.bluecube.osrmzonemanager.builder.BuildPipelineService;
 import it.bluecube.osrmzonemanager.builder.BuildResult;
 import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.runtime.ProcessSupervisorService;
-import it.bluecube.osrmzonemanager.HashUtils;
 import it.bluecube.test.TestBuilders;
 import it.bluecube.test.integration_test.BaseIT;
 import org.assertj.core.api.Assertions;
@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 

@@ -4,6 +4,7 @@ import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.runtime.ProcessSupervisorService;
 import it.bluecube.test.TestBuilders;
 import it.bluecube.test.integration_test.BaseIT;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,8 +14,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 
 import java.util.concurrent.Semaphore;
-
-import org.assertj.core.api.Assertions;
 
 class BuildPipelineServiceBuildZoneNotFoundIT extends BaseIT {
 

@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager.proxy;
 
+import com.github.tomakehurst.wiremock.client.WireMock;
 import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.zone.ZoneEntity;
 import it.bluecube.osrmzonemanager.zone.ZoneRepository;
@@ -14,9 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.Map;
-
-import com.github.tomakehurst.wiremock.client.WireMock;
-import org.assertj.core.api.Assertions;
 
 class ProxyControllerProxyOsrmIT extends BaseIT {
 
