@@ -12,7 +12,7 @@
 
     <groupId>it.bluecube</groupId>
     <artifactId>osrm-zone-manager</artifactId>
-    <version>0.0.4</version>
+    <version>0.0.5</version>
 
     <name>osrm-zone-manager</name>
     <description>Multi-zone OSRM + VROOM orchestrator</description>
