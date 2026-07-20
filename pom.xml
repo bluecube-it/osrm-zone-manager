@@ -28,7 +28,7 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <maven.compiler.release>${java.version}</maven.compiler.release>
-        <wiremock-spring-boot.version>4.2.1</wiremock-spring-boot.version>
+        <wiremock-spring-boot.version>4.2.2</wiremock-spring-boot.version>
 
         <mapstruct.version>1.6.3</mapstruct.version>
         <springdoc-openapi-starter-webmvc-ui.version>3.0.3</springdoc-openapi-starter-webmvc-ui.version>
