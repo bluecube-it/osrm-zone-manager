@@ -4,7 +4,7 @@ ARG OSRM_VERSION=v26.4
 ARG OSMIUM_VERSION=1.16.0
 
 # ---- Stage 0: Maven build ----
-FROM --platform=linux/amd64 maven:3.9-eclipse-temurin-25 AS maven_builder
+FROM --platform=linux/amd64 maven:3-eclipse-temurin-26 AS maven_builder
 WORKDIR /build
 COPY pom.xml .
 COPY src ./src
