@@ -31,7 +31,7 @@
         <wiremock-spring-boot.version>4.2.2</wiremock-spring-boot.version>
 
         <mapstruct.version>1.6.3</mapstruct.version>
-        <springdoc-openapi-starter-webmvc-ui.version>3.1.0</springdoc-openapi-starter-webmvc-ui.version>
+        <springdoc-openapi-starter-webmvc-ui.version>3.1.1</springdoc-openapi-starter-webmvc-ui.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
         <sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
         <sonar.sources>src/main/java</sonar.sources>
