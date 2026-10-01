@@ -3,13 +3,19 @@
 Single-container multi-zone OSRM + VROOM orchestrator.
 
 One Docker container manages multiple routing zones (polygon-bound + optional custom lineStrings). Each active zone runs
-as `osrm-routed` + `vroom-express`
-subprocesses on loopback ports. Spring Boot gateway on `:8080` proxies per-zone traffic and injects DRT radiuses.
+its own `osrm-routed` subprocess on a loopback port; VROOM runs in-process, spawned from the shared `vroom` binary per
+request. Spring Boot gateway on `:8080` proxies per-zone OSRM traffic (injecting DRT radiuses) and serves VROOM
+directly.
 
 ## Quick start
 
 ```bash
 docker build -t osrm-zone-manager .
+
+# Packaging smoke test (binaries, shared libraries, python deps, real
+# osmium -> osrm-extract -> osrm-routed -> vroom pipeline on a synthetic map)
+docker run --rm -v "$PWD/.github/scripts:/test:ro" --entrypoint bash \
+  osrm-zone-manager /test/docker-smoke-test.sh
 
 # /config = persistent (GCS bucket / host dir) — config/backups
 # /data   = ephemeral (emptyDir / tmpfs) — PBF + build artifacts
@@ -20,6 +26,8 @@ docker run -d \
   -v osrm-zone-manager-data:/data \
   -e ZONE_TTL_DAYS=90 \
   -e OSRM_DEFAULT_RADIUS=50 \
+  -e VROOM_THREADS=6 \
+  -e VROOM_MAX_CONCURRENT=16 \
   -e EVICTOR_INTERVAL_MIN=10 \
   osrm-zone-manager
 ```
@@ -36,7 +44,8 @@ Pre-mount PBF at `/data/base/italy.osm.pbf`. Missing PBF returns HTTP 503.
 | `DELETE /zones/:id` | DELETE   | Stop + cleanup zone                                             |
 | `DELETE /zones`     | DELETE   | Stop + cleanup ALL zones                                        |
 | `/:id/osrm/*`       | GET/POST | Proxy to zone's osrm-routed (radiuses injected)                 |
-| `/:id/vroom/*`      | GET/POST | Proxy to zone's vroom-express                                   |
+| `/:id/vroom`       | POST     | VROOM solve, in-process (`vroom` binary; same body/status contract as vroom-express) |
+| `/:id/vroom/health`| GET      | Probe the `vroom` binary for the zone (empty body, status only)                 |
 | `/actuator/health`  | GET      | Healthcheck                                                     |
 
 ## Profiles
@@ -59,7 +68,10 @@ curl -X POST http://localhost:8080/zones \
   distinct zones (ids created before profiles existed keep their id for `CAR`).
 - All proxied requests under `/:id/osrm/*` use the zone's profile; the `{profile}` path segment of
   the OSRM URL is ignored by OSRM and by the gateway.
-- `vroom-express` is configured with a single `osrm` routing server per zone, matching its profile.
+- VROOM requests run in-process: the gateway spawns the shared `vroom` binary per request, registering the
+  zone's OSRM instance under the profile name derived from the zone profile (`car` / `bus`; `car` is kept as an
+  alias because VROOM defaults vehicles without an explicit `profile` to `car`). No per-zone node process and no
+  per-zone VROOM port are involved.
 
 ## Architecture
 
@@ -69,7 +81,9 @@ Single container:
 - PostgreSQL database — zone registry + last_access tracking
 - Per active zone (subprocesses, NOT containers):
     - `osrm-routed --algorithm mld -i 127.0.0.1 -p 5XXX /data/zones/<id>/map.osrm`
-    - `vroom-express` on `3XXX` (config.yml templated per-zone, points at `5XXX`)
+- VROOM (no per-zone process, no per-zone port): the `vroom` binary is spawned per request
+  (`-r osrm -a <profile>:127.0.0.1 -p <profile>:5XXX`, request body on stdin), bounded by
+  `osrm.zone-manager.vroom-max-concurrent`
 - Builder (async): osmium extract → reduce.py → osmium merge → osrm-extract/partition/customize (`-p` = zone profile,
   default `car`)
 - Evictor (`@Scheduled`): TTL by last_access, never evicts `building` zones
@@ -79,19 +93,20 @@ Storage layout:
 - `/config` — GCS FUSE bucket (persistent) — zone registry backups/config
 - `/data` — ephemeral (emptyDir / tmpfs) — base PBF + zone build artifacts
     - `/data/base/italy.osm.pbf` — source PBF (pre-mounted)
-    - `/data/zones/<id>/` — `map.osrm.*`, `vroom-express/config.yml`, `polygon.geojson`, `lineStrings.geojson`
+    - `/data/zones/<id>/` — `map.osrm.*`, `polygon.geojson`, `lineStrings.geojson`
 - On boot: reads PostgreSQL registry → rebuilds zones from stored polygon/lineStrings
 
 ## Versions
 
-| Component     | Version                           |
-|---------------|-----------------------------------|
-| Java          | 25                                |
-| Spring Boot   | 4.1.0                             |
-| OSRM backend  | v26.4                             |
-| VROOM         | v1.15.0                           |
-| vroom-express | bundled with vroom-docker:v1.15.0 |
-| osmium-tool   | 1.16.0                            |
+| Component     | Version                              |
+|---------------|--------------------------------------|
+| Base image    | Debian 13 (trixie) slim              |
+| Java          | 25 (openjdk-25-jre-headless)         |
+| Spring Boot   | 4.1.0                                |
+| OSRM backend  | v26.10.0 (`-debian`: no alpine build since 26.7) |
+| VROOM         | v1.15.0 (binary, spawned in-process) |
+| osmium-tool   | 1.19.0 (built from source, static)   |
+| python deps   | pyosmium (pip), shapely (apt)        |
 
 ## Environment
 
@@ -106,8 +121,32 @@ Storage layout:
 | `DB_PASSWORD`          | `osrm`                     | PostgreSQL password                                                      |
 | `ZONE_TTL_DAYS`        | `90`                       | Evict zones not accessed in N days                                       |
 | `OSRM_DEFAULT_RADIUS`  | `50`                       | Radiuses injected (meters) for /route and /table                         |
+| `VROOM_THREADS`        | `6`                        | Solving threads handed to each `vroom` run (`-t`)                        |
+| `VROOM_MAX_CONCURRENT` | `16`                       | Max concurrent `vroom` processes; extra requests queue                   |
 | `EVICTOR_INTERVAL_MIN` | `10`                       | Evictor interval in minutes                                              |
 | `LOG_LEVEL`            | `info`                     | Spring log level (mapped to `logging.level.it.bluecube.osrmzonemanager`) |
+
+## VROOM tuning
+
+Properties (prefix `osrm.zone-manager`, see `application.properties`). Sizing rule: keep
+`vroom-threads × vroom-max-concurrent` close to the available CPU cores — each `vroom` run is
+multi-threaded and mostly waits on OSRM `/table`, so a moderate oversubscription is fine.
+
+| Property                   | Default                          | Purpose                                                                  |
+|----------------------------|----------------------------------|--------------------------------------------------------------------------|
+| `vroom-binary`             | `vroom`                          | Binary spawned per request                                               |
+| `vroom-threads`            | `6`                              | Solving threads (`-t`), `VROOM_THREADS` env override                     |
+| `vroom-explore`            | `5`                              | Exploration level 0..5 (`-x`)                                            |
+| `vroom-geometry`           | `false`                          | Default for `-g`                                                         |
+| `vroom-choose-eta`         | `false`                          | Default for `-c` (choose ETA for custom routes)                          |
+| `vroom-limit-seconds`      | `0`                              | Default for `-l`; `0` omits the flag                                     |
+| `vroom-timeout-ms`         | `300000`                         | Wall-clock budget per run; the process is killed on expiry               |
+| `vroom-max-locations`      | `1000`                           | Max `jobs + 2 * shipments` per request (413, code 4 beyond)              |
+| `vroom-max-vehicles`       | `200`                            | Max vehicles per request (413, code 4 beyond)                             |
+| `vroom-max-body-bytes`     | `1048576`                        | Max request body size (413, code 4 beyond)                               |
+| `vroom-override`           | `c,g,l,t,x`                      | Options a request may override via its `options` object                  |
+| `vroom-max-concurrent`     | `16`                             | Max concurrent `vroom` processes (`VROOM_MAX_CONCURRENT` env override)   |
+| `vroom-healthcheck-resource` | `config/vroom_healthcheck.json` | Classpath payload used by `/:id/vroom/health`                            |
 
 ## License
 

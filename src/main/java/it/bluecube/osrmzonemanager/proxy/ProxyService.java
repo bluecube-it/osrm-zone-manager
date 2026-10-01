@@ -67,7 +67,7 @@ public class ProxyService {
         }
     }
 
-    public ResponseEntity<byte[]> forwardToZone(String zoneId, ProxyType service, HttpServletRequest request,
+    public ResponseEntity<byte[]> forwardToZone(String zoneId, HttpServletRequest request,
                                                 String path, String query) {
         ZoneDTO dto = zoneService.findZone(zoneId);
         ZoneStatus status = dto.status();
@@ -76,14 +76,14 @@ public class ProxyService {
         }
         zoneService.touch(zoneId);
 
-        Integer port = ProxyType.OSRM.equals(service) ? dto.osrmPort() : dto.vroomPort();
-        if (port == null) {
-            throw new ProxyTargetUnreachableException(service.name() + " target not configured for zone " + zoneId);
+        Integer port = dto.osrmPort();
+        if (port == null || port == 0) {
+            throw new ProxyTargetUnreachableException("OSRM target not configured for zone " + zoneId);
         }
-        return forward(request, service, port, path, query);
+        return forward(request, port, path, query);
     }
 
-    private ResponseEntity<byte[]> forward(HttpServletRequest request, ProxyType service, int port, String path, String query) {
+    private ResponseEntity<byte[]> forward(HttpServletRequest request, int port, String path, String query) {
         String target = buildTargetUrl(port, path, query);
         HttpHeaders headers = buildHeaders(request, port);
         HttpMethod method = HttpMethod.valueOf(request.getMethod());
@@ -99,24 +99,24 @@ public class ProxyService {
             }
             ResponseEntity<byte[]> response = executeRequest(method, target, headers, requestBody);
             if (response.getStatusCode().isError()) {
-                log.warn("Zone {} {} forwarded error response: {}", service.name(), target, response.getStatusCode());
+                log.warn("OSRM forwarded error response from {}: {}", target, response.getStatusCode());
             }
             return ResponseEntity.status(response.getStatusCode())
                     .headers(filterResponseHeaders(response.getHeaders()))
                     .body(response.getBody());
         } catch (ResourceAccessException e) {
-            throw translateConnectionError(e, service, port);
+            throw translateConnectionError(e, port);
         } catch (IOException e) {
             throw new ProxyException("Proxy error: " + e.getMessage());
         }
     }
 
-    private RuntimeException translateConnectionError(ResourceAccessException e, ProxyType service, int port) {
+    private RuntimeException translateConnectionError(ResourceAccessException e, int port) {
         if (e.getCause() instanceof ConnectException) {
             return new ProxyTargetUnreachableException(
-                    service.name() + " unreachable at " + LOCALHOST + ":" + port + ": " + e.getMessage());
+                    "OSRM unreachable at " + LOCALHOST + ":" + port + ": " + e.getMessage());
         }
-        return new ProxyException(service.name() + " error: " + e.getMessage());
+        return new ProxyException("OSRM error: " + e.getMessage());
     }
 
     private byte[] readBounded(InputStream is, long maxBytes) throws IOException {

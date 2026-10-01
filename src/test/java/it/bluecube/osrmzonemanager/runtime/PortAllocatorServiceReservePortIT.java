@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-class PortAllocatorServiceReservePortPairIT extends BaseIT {
+class PortAllocatorServiceReservePortIT extends BaseIT {
 
     @Autowired
     private PortAllocatorService portAllocatorService;
@@ -23,10 +23,10 @@ class PortAllocatorServiceReservePortPairIT extends BaseIT {
     private MapsService mapsService;
 
     @Test
-    void shouldReserveFirstAvailablePortPair() {
-        int[] ports = portAllocatorService.reservePortPair();
+    void shouldReserveFirstAvailablePort() {
+        int port = portAllocatorService.reservePort();
 
-        Assertions.assertThat(ports).containsExactly(5001, 3001);
+        Assertions.assertThat(port).isEqualTo(5001);
     }
 
     @Test
@@ -35,13 +35,12 @@ class PortAllocatorServiceReservePortPairIT extends BaseIT {
                 .zoneId("reserved5001")
                 .status(ZoneStatus.ACTIVE.name())
                 .osrmPort(5001)
-                .vroomPort(3001)
                 .build();
         zoneRepository.save(zone);
 
-        int[] ports = portAllocatorService.reservePortPair();
+        int port = portAllocatorService.reservePort();
 
-        Assertions.assertThat(ports).containsExactly(5002, 3002);
+        Assertions.assertThat(port).isEqualTo(5002);
     }
 
     @Test
@@ -51,12 +50,11 @@ class PortAllocatorServiceReservePortPairIT extends BaseIT {
                     .zoneId("z" + offset)
                     .status(ZoneStatus.ACTIVE.name())
                     .osrmPort(5000 + offset)
-                    .vroomPort(3000 + offset)
                     .build();
             zoneRepository.save(zone);
         }
 
-        Assertions.assertThatThrownBy(() -> portAllocatorService.reservePortPair())
+        Assertions.assertThatThrownBy(() -> portAllocatorService.reservePort())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("port pool exhausted");
     }

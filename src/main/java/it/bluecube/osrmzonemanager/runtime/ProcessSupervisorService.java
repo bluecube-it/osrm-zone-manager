@@ -1,7 +1,6 @@
 package it.bluecube.osrmzonemanager.runtime;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
-import it.bluecube.osrmzonemanager.zone.ZonePorts;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import it.bluecube.osrmzonemanager.zone.ZoneStatus;
 import jakarta.annotation.PreDestroy;
@@ -14,8 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -24,19 +21,21 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Supervises the per-zone {@code osrm-routed} subprocess: start, health probing, restart and shutdown.
+ *
+ * <p>VROOM is not supervised here: it is spawned per request by the in-process VROOM service, so
+ * there is no long-lived VROOM process (and no per-zone VROOM port) to manage.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProcessSupervisorService {
 
     private static final int OSRM_HEALTH_TIMEOUT_SECONDS = 120;
-    private static final int VROOM_HEALTH_TIMEOUT_SECONDS = 60;
     private static final int PING_TIMEOUT_MS = 5_000;
     private static final int MAX_HEALTH_RETRIES = 3;
     private static final String FILE_OSRM_MAP_BASE = "map";
-    private static final String FILE_VROOM_DIR = "vroom-express";
-    private static final String FILE_SRC = "src";
-    private static final String FILE_INDEX_JS = "index.js";
     private static final String BINARY_OS_RM_ROUTED = "osrm-routed";
     private static final String FLAG_ALGORITHM = "--algorithm";
     private static final String ALGORITHM_MLD = "mld";
@@ -46,9 +45,6 @@ public class ProcessSupervisorService {
     private static final String LOCALHOST = "127.0.0.1";
     private static final String HTTP_SCHEME = "http://";
     private static final String ROUTE_PATH_DRIVING = "/route/v1/driving/0,0;0,0";
-    private static final String HEALTH_PATH = "/health";
-    private static final String BINARY_NODE = "node";
-    private static final String ENV_VAR_NODE_PATH = "NODE_PATH";
 
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
@@ -79,28 +75,22 @@ public class ProcessSupervisorService {
             return;
         }
 
-        Optional<ZonePorts> ports = zoneStateService.findPorts(zoneId);
-        if (ports.isEmpty()) {
+        Optional<Integer> osrmPort = zoneStateService.findOsrmPort(zoneId);
+        if (osrmPort.isEmpty()) {
             throw new IllegalStateException("zone " + zoneId + " not found");
         }
-        int osrmPort = ports.get().osrmPort();
-        int vroomPort = ports.get().vroomPort();
-        if (osrmPort == 0 || vroomPort == 0) {
-            throw new IllegalStateException("zone " + zoneId + " has no ports assigned");
+        if (osrmPort.get() == 0) {
+            throw new IllegalStateException("zone " + zoneId + " has no port assigned");
         }
 
-        ProcessInfo info = new ProcessInfo(zoneId, osrmPort, vroomPort);
+        ProcessInfo info = new ProcessInfo(zoneId, osrmPort.get());
         try {
             startOsrm(info);
-            if (info.healthy) {
-                startVroom(info);
-            }
 
             if (info.healthy) {
-                zoneStateService.markZoneActive(zoneId, info.osrmPid, info.vroomPid);
+                zoneStateService.markZoneActive(zoneId, info.osrmPid);
                 registry.put(zoneId, info);
-                log.info("Zone {} started: osrm={}(pid={}) vroom={}(pid={})",
-                        zoneId, osrmPort, info.osrmPid, vroomPort, info.vroomPid);
+                log.info("Zone {} started: osrm={}(pid={})", zoneId, info.osrmPort, info.osrmPid);
             } else {
                 kill(info);
                 markFailed(zoneId, "startup timeout");
@@ -126,7 +116,7 @@ public class ProcessSupervisorService {
             return;
         }
         kill(info);
-        log.info("Zone {}: stopped (ports {}/{})", zoneId, info.osrmPort, info.vroomPort);
+        log.info("Zone {}: stopped (port {})", zoneId, info.osrmPort);
     }
 
     /**
@@ -199,47 +189,6 @@ public class ProcessSupervisorService {
         }
     }
 
-    private void startVroom(ProcessInfo info) {
-        Path vroomDir = Path.of(config.getZonesDir(), info.zoneId, FILE_VROOM_DIR);
-        if (!Files.exists(vroomDir)) {
-            log.error("Zone {}: vroom-express dir missing at {}", info.zoneId, vroomDir);
-            info.healthy = false;
-            return;
-        }
-
-        log.info("Zone {}: starting vroom-express on port {} (dir={})", info.zoneId, info.vroomPort, vroomDir);
-        ProcessBuilder pb = new ProcessBuilder(
-                BINARY_NODE, Path.of(config.getVroomExpressDir(), FILE_SRC, FILE_INDEX_JS).toString()
-        );
-        pb.directory(vroomDir.toFile());
-        pb.inheritIO();
-        Map<String, String> env = pb.environment();
-        env.put(ENV_VAR_NODE_PATH, config.getVroomExpressDir() + "/node_modules");
-
-        try {
-            info.vroom = pb.start();
-            info.vroomPid = info.vroom.pid();
-        } catch (Exception e) {
-            log.error("Zone {}: failed to start vroom-express: {}", info.zoneId, e.getMessage());
-            info.healthy = false;
-            return;
-        }
-
-        boolean ok = waitHealth(
-                HTTP_SCHEME + LOCALHOST + ":" + info.vroomPort + HEALTH_PATH,
-                VROOM_HEALTH_TIMEOUT_SECONDS
-        );
-        info.healthy = info.healthy && ok;
-        if (!ok) {
-            log.error("Zone {}: vroom-express timeout on port {}", info.zoneId, info.vroomPort);
-            killSingle(info.vroom, "vroom");
-            info.vroom = null;
-        } else {
-            log.info("Zone {}: vroom-express healthy on port {} (pid={})",
-                    info.zoneId, info.vroomPort, info.vroomPid);
-        }
-    }
-
     private boolean waitHealth(String url, int timeoutSeconds) {
         Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
         while (Instant.now().isBefore(deadline)) {
@@ -275,7 +224,6 @@ public class ProcessSupervisorService {
     private void kill(ProcessInfo info) {
         if (info != null) {
             killSingle(info.osrm, "osrm(" + info.zoneId + ")");
-            killSingle(info.vroom, "vroom(" + info.zoneId + ")");
         }
     }
 
@@ -338,12 +286,10 @@ public class ProcessSupervisorService {
     }
 
     private void checkOne(String zoneId, ProcessInfo info) {
-        String osrmUrl = "http://" + LOCALHOST + ":" + info.osrmPort + ROUTE_PATH_DRIVING;
-        String vroomUrl = "http://" + LOCALHOST + ":" + info.vroomPort + HEALTH_PATH;
+        String osrmUrl = HTTP_SCHEME + LOCALHOST + ":" + info.osrmPort + ROUTE_PATH_DRIVING;
         boolean osrmOk = ping(osrmUrl);
-        boolean vroomOk = ping(vroomUrl);
 
-        if (osrmOk && vroomOk) {
+        if (osrmOk) {
             if (!info.healthy) {
                 info.healthy = true;
                 info.retries = 0;
@@ -364,21 +310,13 @@ public class ProcessSupervisorService {
         log.warn("Zone {}: unhealthy, restart attempt {}/{}", zoneId, info.retries, MAX_HEALTH_RETRIES);
         kill(info);
         info.osrm = null;
-        info.vroom = null;
         info.healthy = false;
 
         startOsrm(info);
         if (info.healthy) {
-            startVroom(info);
-        }
-        if (info.healthy) {
             info.retries = 0;
             markStatus(zoneId, ZoneStatus.ACTIVE, null);
         }
-    }
-
-    private void markStatus(String zoneId, ZoneStatus status) {
-        markStatus(zoneId, status, null);
     }
 
     private void markStatus(String zoneId, ZoneStatus status, String error) {

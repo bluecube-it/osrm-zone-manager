@@ -75,13 +75,11 @@ class BuildPipelineServiceBuildZoneWithLineStringsIT extends BaseIT {
     void shouldBuildZoneWithLineStringsAndReduceScriptCalled() throws Exception {
         String zoneId = "test-build-lines-1";
         int osrmPort = 5001;
-        int vroomPort = 3001;
 
         ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
                 .zoneId(zoneId)
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(osrmPort)
-                .vroomPort(vroomPort)
                 .build();
         runInTransaction(() -> zoneRepository.save(zone));
 
@@ -147,7 +145,6 @@ class BuildPipelineServiceBuildZoneWithLineStringsIT extends BaseIT {
 
         Assertions.assertThat(result.ok()).isTrue();
         Assertions.assertThat(result.osrmPort()).isEqualTo(osrmPort);
-        Assertions.assertThat(result.vroomPort()).isEqualTo(vroomPort);
         Assertions.assertThat(reduceCalled).isTrue();
 
         Assertions.assertThat(zoneDir.resolve("lineStrings.geojson")).exists();

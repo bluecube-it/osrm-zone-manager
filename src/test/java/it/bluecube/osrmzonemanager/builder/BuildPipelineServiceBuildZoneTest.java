@@ -1,8 +1,6 @@
 package it.bluecube.osrmzonemanager.builder;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
-import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
-import it.bluecube.osrmzonemanager.zone.ZonePorts;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import it.bluecube.test.BaseUnitTest;
 import it.bluecube.test.TestBuilders;
@@ -28,33 +26,24 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
     private OsrmZoneManagerConfig config;
     @Mock
     private ZoneStateService zoneStateService;
-    @Mock
-    private PortAllocatorService portAllocator;
-
     private ObjectMapper objectMapper;
     private Path zonesDir;
-    private Path vroomExpressDir;
 
     @BeforeEach
     void setUp() throws Exception {
         objectMapper = new ObjectMapper();
         zonesDir = Files.createTempDirectory("zones");
-        vroomExpressDir = Files.createTempDirectory("vroom-express");
-        Path healthchecksDir = vroomExpressDir.resolve("healthchecks");
-        Files.createDirectories(healthchecksDir);
-        Files.createFile(healthchecksDir.resolve("vroom_custom_matrix.json"));
 
         Mockito.lenient().when(config.getZonesDir()).thenReturn(zonesDir.toString());
         Mockito.lenient().when(config.getBasePbf()).thenReturn("/tmp/base.pbf");
         Mockito.lenient().when(config.getCarLua()).thenReturn("/tmp/car.lua");
-        Mockito.lenient().when(config.getVroomExpressDir()).thenReturn(vroomExpressDir.toString());
         Mockito.lenient().when(config.getReduceScript()).thenReturn("/tmp/reduce.py");
     }
 
     @Test
     void shouldReturnFailedResultWhenZoneNotInRegistry() throws Exception {
         BuildPipelineService target = buildService();
-        Mockito.when(zoneStateService.findPorts("missing")).thenReturn(Optional.empty());
+        Mockito.when(zoneStateService.findOsrmPort("missing")).thenReturn(Optional.empty());
 
         BuildResult result = target.buildZone("missing", TestBuilders.samplePolygon(), null).get();
 
@@ -68,7 +57,7 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         BuildPipelineService target = buildService();
         Semaphore semaphore = Mockito.spy(new Semaphore(1));
         ReflectionTestUtils.setField(target, "buildSlots", semaphore);
-        Mockito.when(zoneStateService.findPorts("zone")).thenReturn(Optional.of(new ZonePorts(5001, 3001)));
+        Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
 
@@ -81,7 +70,7 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
     void shouldMarkZoneBuiltOnSuccess() throws Exception {
         BuildPipelineService target = buildService();
         ReflectionTestUtils.setField(target, "buildSlots", new Semaphore(1));
-        Mockito.when(zoneStateService.findPorts("zone")).thenReturn(Optional.of(new ZonePorts(5001, 3001)));
+        Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
 
@@ -91,7 +80,7 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
 
     @Test
     void shouldMarkZoneFailedAndReleasePortsOnException() throws Exception {
-        BuildPipelineService target = new BuildPipelineService(config, zoneStateService, portAllocator, objectMapper) {
+        BuildPipelineService target = new BuildPipelineService(config, zoneStateService, objectMapper) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) {
                 throw new BuildException("boom");
@@ -99,15 +88,13 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         };
         Semaphore semaphore = Mockito.spy(new Semaphore(1));
         ReflectionTestUtils.setField(target, "buildSlots", semaphore);
-        Mockito.when(zoneStateService.findPorts("zone")).thenReturn(Optional.of(new ZonePorts(5001, 3001)));
+        Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
 
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).contains("boom");
         Mockito.verify(zoneStateService).markZoneFailed("zone", "boom");
-        Mockito.verify(portAllocator).releasePort("osrm", 5001);
-        Mockito.verify(portAllocator).releasePort("vroom", 3001);
         Mockito.verify(semaphore).release();
     }
 
@@ -117,18 +104,17 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         Semaphore semaphore = Mockito.mock(Semaphore.class);
         Mockito.doThrow(new InterruptedException()).when(semaphore).acquire();
         ReflectionTestUtils.setField(target, "buildSlots", semaphore);
-        Mockito.when(zoneStateService.findPorts("zone")).thenReturn(Optional.of(new ZonePorts(5001, 3001)));
+        Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
 
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).containsIgnoringCase("interrupted");
-        Mockito.verify(portAllocator, Mockito.never()).releasePort(Mockito.anyString(), Mockito.anyInt());
         Mockito.verify(zoneStateService, Mockito.never()).markZoneBuilt(Mockito.anyString());
     }
 
     private BuildPipelineService buildService() {
-        return new BuildPipelineService(config, zoneStateService, portAllocator, objectMapper) {
+        return new BuildPipelineService(config, zoneStateService, objectMapper) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) throws IOException {
                 if ("osmium".equals(command.get(0)) && "extract".equals(command.get(1))) {

@@ -10,14 +10,18 @@ import java.io.IOException;
 import java.net.ServerSocket;
 
 /**
- * Allocates paired OSRM/Vroom port numbers for zones.
+ * Allocates OSRM port numbers for zones.
  *
- * <p>Candidate ports are derived from configured base offsets and checked
+ * <p>Candidate ports are derived from the configured base offset and checked
  * against two independent sources of truth: the {@link ZoneStateService}
  * (logical reservation — is this port already assigned to a zone?) and the
  * OS TCP stack (physical availability — is this port actually bindable right
  * now?). Both checks are required, since a port can be logically free but
  * physically occupied by an orphaned/zombie process, or vice versa.
+ *
+ * <p>Ports are freed implicitly when the zone record is deleted: there is no explicit
+ * release API, so ports held by FAILED zones (which may still have zombie processes)
+ * are not immediately reused.
  */
 @Slf4j
 @Service
@@ -30,48 +34,29 @@ public class PortAllocatorService {
     private final OsrmZoneManagerConfig config;
 
     /**
-     * Reserves a pair of free ports (OSRM + Vroom) at the same offset from their
-     * respective configured base ports.
+     * Reserves a free OSRM port.
      *
-     * @return a two-element array {@code [osrmPort, vroomPort]}
-     * @throws IllegalStateException if no free port pair is found within {@link #PORT_SCAN_RANGE}
+     * @return the reserved port number
+     * @throws IllegalStateException if no free port is found within {@link #PORT_SCAN_RANGE}
      */
-    public synchronized int[] reservePortPair() {
+    public synchronized int reservePort() {
         int osrmStart = config.getOsrmPortStart();
-        int vroomStart = config.getVroomPortStart();
 
         for (int offset = 1; offset <= PORT_SCAN_RANGE; offset++) {
             int osrmPort = osrmStart + offset;
-            int vroomPort = vroomStart + offset;
 
-            if (zoneStateService.existsByOsrmPortOrVroomPort(osrmPort, vroomPort)) {
+            if (zoneStateService.existsByOsrmPort(osrmPort)) {
                 continue;
             }
-            if (!isPortFree(osrmPort) || !isPortFree(vroomPort)) {
-                log.debug("Port pair osrm={} vroom={} logically free but not bindable, skipping", osrmPort, vroomPort);
+            if (!isPortFree(osrmPort)) {
+                log.debug("Port osrm={} logically free but not bindable, skipping", osrmPort);
                 continue;
             }
 
-            log.debug("Reserved ports osrm={} vroom={}", osrmPort, vroomPort);
-            return new int[]{osrmPort, vroomPort};
+            log.debug("Reserved port osrm={}", osrmPort);
+            return osrmPort;
         }
         throw new IllegalStateException("port pool exhausted — tried offset 1.." + PORT_SCAN_RANGE);
-    }
-
-    /**
-     * Intentional no-op.
-     *
-     * <p>Ports are allocated per zone by {@link #reservePortPair()} and freed implicitly
-     * when the zone record is deleted from the registry. Keeping this method as a no-op
-     * prevents ports held by FAILED zones (which may still have zombie processes) from
-     * being immediately reused. Once the zone record is removed, {@code reservePortPair}
-     * will consider the ports available again, subject to the OS-level bind check.</p>
-     *
-     * @param kind port kind label (e.g. "osrm" or "vroom")
-     * @param port port number
-     */
-    public void releasePort(String kind, int port) {
-        log.debug("ReleasePort {} {} (implicit: zone record deletion frees ports)", kind, port);
     }
 
     /**

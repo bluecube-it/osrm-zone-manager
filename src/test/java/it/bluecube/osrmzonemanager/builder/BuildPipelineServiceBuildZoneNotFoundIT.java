@@ -38,7 +38,6 @@ class BuildPipelineServiceBuildZoneNotFoundIT extends BaseIT {
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).contains("not found in registry");
         Assertions.assertThat(result.osrmPort()).isNull();
-        Assertions.assertThat(result.vroomPort()).isNull();
 
         Mockito.verify(spyBuildPipelineService, Mockito.never()).runSubprocess(Mockito.any(), Mockito.any());
         Mockito.verify(processSupervisorService, Mockito.never()).startZone(Mockito.any());

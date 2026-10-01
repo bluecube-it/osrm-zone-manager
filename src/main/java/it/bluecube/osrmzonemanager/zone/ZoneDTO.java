@@ -14,9 +14,7 @@ public record ZoneDTO(
         ZoneStatus status,
         ZoneProfile profile,
         Integer osrmPort,
-        Integer vroomPort,
         Long osrmPid,
-        Long vroomPid,
         String polygonHash,
         String lineStringsHash,
         String basePbfMtime,
@@ -32,7 +30,7 @@ public record ZoneDTO(
      */
     public ZoneDTO withProcess(String process) {
         return new ZoneDTO(
-                zoneId, status, profile, osrmPort, vroomPort, osrmPid, vroomPid,
+                zoneId, status, profile, osrmPort, osrmPid,
                 polygonHash, lineStringsHash, basePbfMtime,
                 createdAt, lastAccess, lastBuildAt, error, process, message
         );
@@ -43,7 +41,7 @@ public record ZoneDTO(
      */
     public ZoneDTO withMessage(String message) {
         return new ZoneDTO(
-                zoneId, status, profile, osrmPort, vroomPort, osrmPid, vroomPid,
+                zoneId, status, profile, osrmPort, osrmPid,
                 polygonHash, lineStringsHash, basePbfMtime,
                 createdAt, lastAccess, lastBuildAt, error, process, message
         );

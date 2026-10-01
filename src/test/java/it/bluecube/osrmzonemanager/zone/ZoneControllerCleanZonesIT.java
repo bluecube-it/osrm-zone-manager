@@ -48,7 +48,7 @@ class ZoneControllerCleanZonesIT extends BaseIT {
 
         Mockito.when(pbfDownloadService.ensureBasePbf()).thenReturn(basePbf.toString());
         Mockito.when(buildPipelineService.buildZone(ArgumentMatchers.anyString(), ArgumentMatchers.any(), ArgumentMatchers.any()))
-                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, 3001, null)));
+                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, null)));
         Mockito.when(processSupervisorService.isZoneRunning(ArgumentMatchers.anyString())).thenReturn(false);
         Mockito.doNothing().when(processSupervisorService).startZone(ArgumentMatchers.anyString());
     }

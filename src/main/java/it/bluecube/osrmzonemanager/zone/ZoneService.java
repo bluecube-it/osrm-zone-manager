@@ -105,16 +105,15 @@ public class ZoneService {
             }
         }
 
-        int[] ports = reservePorts();
+        int osrmPort = reservePort();
         ZoneEntity zone = zoneStateService.findById(zoneId)
                 .filter(e -> e.matchesContent(polygonHash, lineStringsHash, baseMtime))
                 .orElseGet(() -> buildZoneEntity(zoneId, polygon, lineStrings, resolvedProfile,
-                        polygonHash, lineStringsHash, baseMtime, new int[]{ports[0], ports[1]}));
+                        polygonHash, lineStringsHash, baseMtime, osrmPort));
         zone.setStatus(ZoneStatus.BUILDING.name());
-        zone.setOsrmPort(ports[0]);
-        zone.setVroomPort(ports[1]);
+        zone.setOsrmPort(osrmPort);
         zone.setError("");
-        persistOrReleasePorts(zone, ports);
+        persistZone(zone);
 
         launchBuild(zoneId, polygon, lineStrings);
 
@@ -235,7 +234,6 @@ public class ZoneService {
             }
             log.warn("Zone {}: record {} but processes not running, rebuilding", zoneId, status);
             processSupervisor.stopZone(zoneId);
-            releasePortsQuietly(zoneId, existing.getOsrmPort(), existing.getVroomPort());
             zoneStateService.markZoneDegraded(zoneId, null);
         }
 
@@ -248,12 +246,12 @@ public class ZoneService {
     }
 
     /**
-     * @return int[2] with {osrmPort, vroomPort}
-     * @throws IllegalStateException if ports cannot be allocated
+     * @return the reserved OSRM port
+     * @throws IllegalStateException if a port cannot be allocated
      */
-    private int[] reservePorts() {
+    private int reservePort() {
         try {
-            return portAllocator.reservePortPair();
+            return portAllocator.reservePort();
         } catch (RuntimeException e) {
             throw new IllegalStateException(e.getMessage(), e);
         }
@@ -267,11 +265,11 @@ public class ZoneService {
      * @param polygonHash     SHA-256 of serialized polygon
      * @param lineStringsHash SHA-256 of serialized lineStrings (empty if null)
      * @param baseMtime       base PBF file modification time as string
-     * @param ports           {osrmPort, vroomPort}
+     * @param osrmPort        reserved OSRM port
      * @return the constructed new zone entity in BUILDING state
      */
     private ZoneEntity buildZoneEntity(String zoneId, JsonNode polygon, JsonNode lineStrings, ZoneProfile profile,
-                                       String polygonHash, String lineStringsHash, String baseMtime, int[] ports) {
+                                       String polygonHash, String lineStringsHash, String baseMtime, int osrmPort) {
         return ZoneEntity.builder()
                 .zoneId(zoneId)
                 .profile(profile)
@@ -279,8 +277,7 @@ public class ZoneService {
                 .lineStringsHash(lineStringsHash)
                 .basePbfMtime(baseMtime)
                 .status(ZoneStatus.BUILDING.name())
-                .osrmPort(ports[0])
-                .vroomPort(ports[1])
+                .osrmPort(osrmPort)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(objectMapper.writeValueAsString(polygon))
@@ -289,37 +286,12 @@ public class ZoneService {
     }
 
     /**
-     * Persists the zone entity; releases ports on failure.
+     * Persists the zone entity, surfacing persistence failures to the caller.
      *
-     * @param zone  the zone entity to persist
-     * @param ports {osrmPort, vroomPort}
+     * @param zone the zone entity to persist
      */
-    private void persistOrReleasePorts(ZoneEntity zone, int[] ports) {
-        try {
-            zoneStateService.save(zone);
-        } catch (RuntimeException e) {
-            log.warn("Zone {}: register failed: {}", zone.getZoneId(), e.getMessage());
-            releasePortsQuietly(zone.getZoneId(), ports[0], ports[1]);
-            throw e;
-        }
-    }
-
-    /**
-     * @param zoneId    zone identifier (for logging)
-     * @param osrmPort  OSRM port to release
-     * @param vroomPort Vroom port to release
-     */
-    private void releasePortsQuietly(String zoneId, int osrmPort, int vroomPort) {
-        try {
-            portAllocator.releasePort("osrm", osrmPort);
-        } catch (RuntimeException e) {
-            log.warn("Zone {}: release osrm port {} failed: {}", zoneId, osrmPort, e.getMessage());
-        }
-        try {
-            portAllocator.releasePort("vroom", vroomPort);
-        } catch (RuntimeException e) {
-            log.warn("Zone {}: release vroom port {} failed: {}", zoneId, vroomPort, e.getMessage());
-        }
+    private void persistZone(ZoneEntity zone) {
+        zoneStateService.save(zone);
     }
 
     /**

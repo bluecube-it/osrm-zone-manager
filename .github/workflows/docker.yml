@@ -1,0 +1,60 @@
+name: Docker image smoke test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'entrypoint.sh'
+      - 'src/main/scripts/**'
+      - '.github/scripts/**'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'entrypoint.sh'
+      - 'src/main/scripts/**'
+      - '.github/scripts/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    name: Build image and run smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker BuildX
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: osrm-zone-manager:smoke
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Verifies versions, assets, shared libraries and an end-to-end
+      # osmium -> osrm-extract/partition/customize -> osrm-routed -> vroom pipeline.
+      - name: Smoke test packaged image
+        run: |
+          docker run --rm \
+            -v "$PWD/.github/scripts:/test:ro" \
+            --entrypoint bash \
+            osrm-zone-manager:smoke /test/docker-smoke-test.sh

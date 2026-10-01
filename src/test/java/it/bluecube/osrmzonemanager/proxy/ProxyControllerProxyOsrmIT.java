@@ -99,7 +99,6 @@ class ProxyControllerProxyOsrmIT extends BaseIT {
                 .zoneId(zoneId)
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(wireMockPort)
-                .vroomPort(wireMockPort)
                 .build();
         zoneRepository.save(zone);
 
@@ -117,7 +116,6 @@ class ProxyControllerProxyOsrmIT extends BaseIT {
                 .zoneId(zoneId)
                 .status(ZoneStatus.ACTIVE.name())
                 .osrmPort(wireMockPort)
-                .vroomPort(wireMockPort)
                 .build();
         zoneRepository.save(zone);
         return zoneId;

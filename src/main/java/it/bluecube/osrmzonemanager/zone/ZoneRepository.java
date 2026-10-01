@@ -12,11 +12,10 @@ import org.springframework.stereotype.Repository;
 public interface ZoneRepository extends JpaRepository<ZoneEntity, String> {
 
     /**
-     * @param osrmPort  OSRM port number
-     * @param vroomPort Vroom port number
-     * @return true if any zone uses either port
+     * @param osrmPort OSRM port number
+     * @return true if any zone uses this port
      */
-    boolean existsByOsrmPortOrVroomPort(int osrmPort, int vroomPort);
+    boolean existsByOsrmPort(int osrmPort);
 
     /**
      * Deletes a zone by zone_id, bypassing the @Version optimistic lock check.

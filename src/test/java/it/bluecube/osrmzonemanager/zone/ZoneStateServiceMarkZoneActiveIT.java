@@ -22,12 +22,11 @@ class ZoneStateServiceMarkZoneActiveIT extends BaseIT {
                 .build();
         zoneRepository.save(zone);
 
-        zoneStateService.markZoneActive("activezone12345", 123L, 456L);
+        zoneStateService.markZoneActive("activezone12345", 123L);
 
         ZoneEntity updated = zoneRepository.findById("activezone12345").orElseThrow();
         Assertions.assertThat(updated.getStatus()).isEqualTo(ZoneStatus.ACTIVE.name());
         Assertions.assertThat(updated.getOsrmPid()).isEqualTo(123L);
-        Assertions.assertThat(updated.getVroomPid()).isEqualTo(456L);
         Assertions.assertThat(updated.getError()).isEqualTo("");
     }
 }

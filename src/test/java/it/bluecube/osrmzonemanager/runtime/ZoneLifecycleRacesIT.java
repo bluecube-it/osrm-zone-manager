@@ -139,7 +139,6 @@ class ZoneLifecycleRacesIT {
                 .basePbfMtime(String.valueOf(baseMtime))
                 .status(ZoneStatus.ACTIVE.name())
                 .osrmPort(11111)
-                .vroomPort(22222)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(objectMapper.writeValueAsString(samplePolygon))
@@ -160,11 +159,10 @@ class ZoneLifecycleRacesIT {
         ZoneEntity updated = zoneRepository.findById(zoneId).orElseThrow();
         Assertions.assertThat(updated.getStatus()).isEqualTo(ZoneStatus.BUILDING.name());
         Assertions.assertThat(updated.getOsrmPort()).isNotEqualTo(11111);
-        Assertions.assertThat(updated.getVroomPort()).isNotEqualTo(22222);
     }
 
     @Test
-    void testRegisterFailureReleasesPorts() {
+    void testRegisterFailurePropagates() {
         Mockito.doThrow(new RuntimeException("register boom")).when(zoneRepository).save(ArgumentMatchers.any());
 
         Assertions.assertThatThrownBy(() ->
@@ -174,7 +172,7 @@ class ZoneLifecycleRacesIT {
     }
 
     @Test
-    void testRebuildReleasesStalePorts() throws Exception {
+    void testRebuildReallocatesStalePort() throws Exception {
         String zoneId = zoneId(samplePolygon, null);
         ZoneEntity zone = ZoneEntity.builder()
                 .zoneId(zoneId)
@@ -183,7 +181,6 @@ class ZoneLifecycleRacesIT {
                 .basePbfMtime(String.valueOf(baseMtime))
                 .status(ZoneStatus.ACTIVE.name())
                 .osrmPort(11111)
-                .vroomPort(22222)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(objectMapper.writeValueAsString(samplePolygon))
@@ -196,25 +193,12 @@ class ZoneLifecycleRacesIT {
                         .content(objectMapper.writeValueAsString(java.util.Map.of("polygon", samplePolygon))))
                 .andExpect(MockMvcResultMatchers.status().isCreated());
 
-        Mockito.verify(portAllocatorService).releasePort("osrm", 11111);
-        Mockito.verify(portAllocatorService).releasePort("vroom", 22222);
-    }
-
-    @Test
-    void testReleasePortFailureDoesNotMaskRegisterError() {
-        Mockito.doThrow(new RuntimeException("register boom")).when(zoneRepository).save(ArgumentMatchers.any());
-        Mockito.doThrow(new RuntimeException("release boom")).when(portAllocatorService).releasePort(ArgumentMatchers.anyString(), ArgumentMatchers.anyInt());
-
-        Assertions.assertThatThrownBy(() ->
-                        zoneController.createZone(new ZoneInputDTO(samplePolygon, null, null)))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("register boom");
     }
 
     @Test
     void testDeleteCancelsInFlightStartTask() throws Exception {
         Mockito.when(buildPipelineService.buildZone(ArgumentMatchers.anyString(), ArgumentMatchers.any(), ArgumentMatchers.any())).thenReturn(
-                CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, 3001, null)));
+                CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, null)));
 
         Mockito.doAnswer(invocation -> {
             Thread.sleep(10_000);
@@ -275,7 +259,6 @@ class ZoneLifecycleRacesIT {
                 .basePbfMtime("12345")
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(5003)
-                .vroomPort(3003)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(objectMapper.writeValueAsString(samplePolygon))

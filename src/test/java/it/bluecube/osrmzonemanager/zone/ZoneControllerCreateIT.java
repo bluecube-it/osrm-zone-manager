@@ -54,7 +54,7 @@ class ZoneControllerCreateIT extends BaseIT {
 
         Mockito.when(pbfDownloadService.ensureBasePbf()).thenReturn(basePbf.toString());
         Mockito.when(buildPipelineService.buildZone(ArgumentMatchers.anyString(), ArgumentMatchers.any(), ArgumentMatchers.any()))
-                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, 3001, null)));
+                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, null)));
         Mockito.when(processSupervisorService.isZoneRunning(ArgumentMatchers.anyString())).thenReturn(false);
         Mockito.doNothing().when(processSupervisorService).startZone(ArgumentMatchers.anyString());
     }
@@ -177,7 +177,6 @@ class ZoneControllerCreateIT extends BaseIT {
                 .basePbfMtime(String.valueOf(baseMtime))
                 .status(status)
                 .osrmPort(11111)
-                .vroomPort(22222)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(objectMapper.writeValueAsString(samplePolygon))

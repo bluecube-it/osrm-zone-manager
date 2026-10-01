@@ -66,9 +66,9 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
 
         Mockito.lenient().when(pbfDownloadService.ensureBasePbf()).thenReturn(basePbf.toString());
         Mockito.lenient().when(config.getZonesDir()).thenReturn(zonesDir.toString());
-        Mockito.lenient().when(portAllocator.reservePortPair()).thenReturn(new int[]{5001, 3001});
+        Mockito.lenient().when(portAllocator.reservePort()).thenReturn(5001);
         Mockito.lenient().when(buildPipelineService.buildZone(Mockito.anyString(), Mockito.any(), Mockito.any()))
-                .thenReturn(CompletableFuture.completedFuture(new BuildResult("z", true, 5001, 3001, null)));
+                .thenReturn(CompletableFuture.completedFuture(new BuildResult("z", true, 5001, null)));
         Mockito.lenient().when(objectMapper.writeValueAsBytes(Mockito.any())).thenAnswer(inv -> inv.getArgument(0).toString().getBytes());
         Mockito.lenient().when(objectMapper.writeValueAsString(Mockito.any())).thenAnswer(inv -> inv.getArgument(0).toString());
     }
@@ -139,7 +139,6 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
                 .basePbfMtime(baseMtime)
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(11111)
-                .vroomPort(22222)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(TestBuilders.samplePolygon().toString())
@@ -180,7 +179,6 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
                 .basePbfMtime(baseMtime)
                 .status(ZoneStatus.ACTIVE.name())
                 .osrmPort(11111)
-                .vroomPort(22222)
                 .createdAt(Instant.now())
                 .lastAccess(Instant.now())
                 .polygonGeojson(TestBuilders.samplePolygon().toString())

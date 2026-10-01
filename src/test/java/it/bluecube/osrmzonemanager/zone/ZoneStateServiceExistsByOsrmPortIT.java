@@ -6,7 +6,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-class ZoneStateServiceExistsByOsrmPortOrVroomPortIT extends BaseIT {
+class ZoneStateServiceExistsByOsrmPortIT extends BaseIT {
 
     @Autowired
     private ZoneStateService zoneStateService;
@@ -14,28 +14,24 @@ class ZoneStateServiceExistsByOsrmPortOrVroomPortIT extends BaseIT {
     private ZoneRepository zoneRepository;
 
     @Test
-    void shouldReturnTrueWhenEitherPortMatches() {
+    void shouldReturnTrueWhenPortMatches() {
         ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
                 .zoneId("existsport1234")
                 .osrmPort(5010)
-                .vroomPort(3010)
                 .build();
         zoneRepository.save(zone);
 
-        Assertions.assertThat(zoneStateService.existsByOsrmPortOrVroomPort(5010, 9999)).isTrue();
-        Assertions.assertThat(zoneStateService.existsByOsrmPortOrVroomPort(9999, 3010)).isTrue();
-        Assertions.assertThat(zoneStateService.existsByOsrmPortOrVroomPort(5010, 3010)).isTrue();
+        Assertions.assertThat(zoneStateService.existsByOsrmPort(5010)).isTrue();
     }
 
     @Test
-    void shouldReturnFalseWhenNeitherPortMatches() {
+    void shouldReturnFalseWhenPortDoesNotMatch() {
         ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
                 .zoneId("existsport1234")
                 .osrmPort(5010)
-                .vroomPort(3010)
                 .build();
         zoneRepository.save(zone);
 
-        Assertions.assertThat(zoneStateService.existsByOsrmPortOrVroomPort(8888, 9999)).isFalse();
+        Assertions.assertThat(zoneStateService.existsByOsrmPort(9999)).isFalse();
     }
 }

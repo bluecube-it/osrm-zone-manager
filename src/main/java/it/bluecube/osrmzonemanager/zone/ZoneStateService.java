@@ -32,12 +32,12 @@ public class ZoneStateService {
     }
 
     /**
-     * Returns osrm + vroom port pair for a zone. Returns empty if zone not found.
+     * Returns the OSRM port allocated to a zone. Returns empty if the zone is not registered.
      * Used by external services (BuildPipelineService, ProcessSupervisorService) to avoid entity leak.
      */
-    public Optional<ZonePorts> findPorts(String zoneId) {
+    public Optional<Integer> findOsrmPort(String zoneId) {
         return zoneRepository.findById(zoneId)
-                .map(zone -> new ZonePorts(zone.getOsrmPort(), zone.getVroomPort()));
+                .map(ZoneEntity::getOsrmPort);
     }
 
     /**
@@ -73,12 +73,11 @@ public class ZoneStateService {
     // --- public queries (no entity leak) ---
 
     /**
-     * @param osrmPort  OSRM port number
-     * @param vroomPort Vroom port number
-     * @return true if any zone uses either port
+     * @param osrmPort OSRM port number
+     * @return true if any zone uses this port
      */
-    public boolean existsByOsrmPortOrVroomPort(int osrmPort, int vroomPort) {
-        return zoneRepository.existsByOsrmPortOrVroomPort(osrmPort, vroomPort);
+    public boolean existsByOsrmPort(int osrmPort) {
+        return zoneRepository.existsByOsrmPort(osrmPort);
     }
 
     /**
@@ -158,18 +157,16 @@ public class ZoneStateService {
     }
 
     /**
-     * Transitions zone to ACTIVE, records PIDs, resets error.
+     * Transitions zone to ACTIVE, records the OSRM PID, resets error.
      *
-     * @param zoneId   zone identifier
-     * @param osrmPid  OSRM process ID
-     * @param vroomPid Vroom process ID
+     * @param zoneId  zone identifier
+     * @param osrmPid OSRM process ID
      */
     @Transactional
-    public void markZoneActive(String zoneId, long osrmPid, long vroomPid) {
+    public void markZoneActive(String zoneId, long osrmPid) {
         zoneRepository.findById(zoneId).ifPresent(zone -> {
             zone.setStatus(ZoneStatus.ACTIVE.name());
             zone.setOsrmPid(osrmPid);
-            zone.setVroomPid(vroomPid);
             zone.setError("");
             zoneRepository.save(zone);
         });

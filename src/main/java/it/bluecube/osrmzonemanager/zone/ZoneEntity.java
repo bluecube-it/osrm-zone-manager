@@ -46,13 +46,8 @@ public class ZoneEntity {
 
     private int osrmPort;
 
-    private int vroomPort;
-
     @Builder.Default
     private long osrmPid = 0;
-
-    @Builder.Default
-    private long vroomPid = 0;
 
     private Instant createdAt;
 

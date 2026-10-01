@@ -1,0 +1,5 @@
+ALTER TABLE zones
+    DROP COLUMN IF EXISTS vroom_port;
+
+ALTER TABLE zones
+    DROP COLUMN IF EXISTS vroom_pid;

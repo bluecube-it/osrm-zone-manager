@@ -1,14 +1,11 @@
 package it.bluecube.osrmzonemanager.builder;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
-import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
 import it.bluecube.osrmzonemanager.zone.ZoneFiles;
-import it.bluecube.osrmzonemanager.zone.ZonePorts;
 import it.bluecube.osrmzonemanager.zone.ZoneProfile;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
@@ -19,7 +16,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -30,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Orchestrates the build pipeline for a single OSRM zone.
- * Pipeline stages: osmium extract → (reduce.py merge) → osrm-extract → osrm-partition → osrm-customize → vroom-express prep.
+ * Pipeline stages: osmium extract → (reduce.py merge) → osrm-extract → osrm-partition → osrm-customize.
  */
 @Slf4j
 @Service
@@ -45,20 +41,11 @@ public class BuildPipelineService {
     private static final String FILE_COMBINED_PBF = "combined.osm.pbf";
     private static final String FILE_OSRM_MAP_BASE = "map.osrm";
     private static final String FILE_OSRM_MAP_OUTPUT = "map";
-    private static final String FILE_VROOM_DIR = "vroom-express";
     private static final String BINARY_OS_RM_EXTRACT = "osrm-extract";
     private static final String BINARY_OS_RM_PARTITION = "osrm-partition";
     private static final String BINARY_OS_RM_CUSTOMIZE = "osrm-customize";
-    private static final String PLACEHOLDER_OS_RM_PORT = "{{OSRM_PORT}}";
-    private static final String PLACEHOLDER_VROOM_PORT = "{{VROOM_PORT}}";
-    private static final String FILE_HEALTHCHECKS = "healthchecks";
-    private static final String FILE_HEALTHCHECKS_MATRIX = "vroom_custom_matrix.json";
-    private static final String FILE_CONFIG_YML = "config.yml";
-    private static final String TEMPLATE_PATH = "config/vroom-config.template.yml";
     private static final String CMD_OSMIUM = "osmium";
     private static final String CMD_PYTHON = "python3";
-    private static final String SVC_OSRM = "osrm";
-    private static final String SVC_VROOM = "vroom";
     private static final String FLAG_EXTRACT = "extract";
     private static final String FLAG_MERGE = "merge";
     private static final String FLAG_P = "-p";
@@ -66,7 +53,6 @@ public class BuildPipelineService {
     private static final String FLAG_OVERWRITE = "--overwrite";
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
-    private final PortAllocatorService portAllocator;
     private final ObjectMapper objectMapper;
     private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
 
@@ -80,15 +66,14 @@ public class BuildPipelineService {
      */
     @Async
     public CompletableFuture<BuildResult> buildZone(String zoneId, JsonNode polygon, JsonNode lineStrings) {
-        Optional<ZonePorts> ports = zoneStateService.findPorts(zoneId);
+        Optional<Integer> ports = zoneStateService.findOsrmPort(zoneId);
         if (ports.isEmpty()) {
             log.error("Zone {}: not found in registry", zoneId);
             return CompletableFuture.completedFuture(
-                    new BuildResult(zoneId, false, null, null, "zone not found in registry"));
+                    new BuildResult(zoneId, false, null, "zone not found in registry"));
         }
 
-        int osrmPort = ports.get().osrmPort();
-        int vroomPort = ports.get().vroomPort();
+        int osrmPort = ports.get();
         ZoneProfile profile = zoneStateService.findProfile(zoneId).orElse(ZoneProfile.CAR);
         String zoneDirPath = "%s/%s".formatted(config.getZonesDir(), zoneId);
         Path zoneDir = Path.of(zoneDirPath);
@@ -98,7 +83,7 @@ public class BuildPipelineService {
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return CompletableFuture.completedFuture(
-                    new BuildResult(zoneId, false, osrmPort, vroomPort, "interrupted waiting for build slot"));
+                    new BuildResult(zoneId, false, osrmPort, "interrupted waiting for build slot"));
         }
 
         try {
@@ -108,18 +93,15 @@ public class BuildPipelineService {
             buildCombinedPbf(zoneDir, regionPbf, inputs.lineStringsPath());
             buildOsrmMap(zoneDir, profile);
             cleanTempPBFs(zoneDir);
-            prepareVroomExpressDir(zoneDir, osrmPort, vroomPort);
             zoneStateService.markZoneBuilt(zoneId);
             log.info("Zone {}: build complete", zoneId);
             return CompletableFuture.completedFuture(
-                    new BuildResult(zoneId, true, osrmPort, vroomPort, null));
+                    new BuildResult(zoneId, true, osrmPort, null));
         } catch (Exception e) {
             log.error("Zone {}: build failed: {}", zoneId, e.getMessage(), e);
             zoneStateService.markZoneFailed(zoneId, e.getMessage());
-            portAllocator.releasePort(SVC_OSRM, osrmPort);
-            portAllocator.releasePort(SVC_VROOM, vroomPort);
             return CompletableFuture.completedFuture(
-                    new BuildResult(zoneId, false, osrmPort, vroomPort, e.getMessage()));
+                    new BuildResult(zoneId, false, osrmPort, e.getMessage()));
         } finally {
             buildSlots.release();
         }
@@ -241,33 +223,6 @@ public class BuildPipelineService {
     }
 
     /**
-     * Prepares the vroom-express directory with healthchecks matrix and config.yml.
-     *
-     * @param zoneDir   target zone directory
-     * @param osrmPort  OSRM port
-     * @param vroomPort VROOM port
-     * @throws IOException on file operation failure
-     */
-    private void prepareVroomExpressDir(Path zoneDir, int osrmPort, int vroomPort) throws IOException {
-        Path vroomDir = zoneDir.resolve(FILE_VROOM_DIR);
-        if (Files.exists(vroomDir)) {
-            deleteDirectory(vroomDir);
-        }
-        Files.createDirectories(vroomDir.resolve(FILE_HEALTHCHECKS));
-
-        Path sourceHc = Path.of(config.getVroomExpressDir(), FILE_HEALTHCHECKS, FILE_HEALTHCHECKS_MATRIX);
-        if (Files.exists(sourceHc)) {
-            Files.copy(sourceHc, vroomDir.resolve(FILE_HEALTHCHECKS).resolve(FILE_HEALTHCHECKS_MATRIX));
-        }
-
-        ClassPathResource template = new ClassPathResource(TEMPLATE_PATH);
-        String content = new String(template.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        content = content.replace(PLACEHOLDER_OS_RM_PORT, String.valueOf(osrmPort))
-                .replace(PLACEHOLDER_VROOM_PORT, String.valueOf(vroomPort));
-        Files.writeString(vroomDir.resolve(FILE_CONFIG_YML), content);
-    }
-
-    /**
      * Runs an external subprocess with a timeout.
      *
      * @param command command and arguments
@@ -332,25 +287,6 @@ public class BuildPipelineService {
             return objectMapper.writeValueAsString(node);
         } catch (JacksonException e) {
             throw new IllegalArgumentException("invalid json", e);
-        }
-    }
-
-    /**
-     * Recursively deletes all files and the directory itself.
-     *
-     * @param path root of the directory tree to delete
-     * @throws IOException on file deletion failure
-     */
-    private void deleteDirectory(Path path) throws IOException {
-        try (var walk = Files.walk(path)) {
-            walk.sorted(Comparator.reverseOrder())
-                    .forEach(p -> {
-                        try {
-                            Files.deleteIfExists(p);
-                        } catch (Exception e) {
-                            log.warn("Failed to delete {}: {}", p, e.getMessage());
-                        }
-                    });
         }
     }
 

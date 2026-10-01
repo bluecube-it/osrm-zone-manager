@@ -4,7 +4,6 @@ public record BuildResult(
         String zoneId,
         boolean ok,
         Integer osrmPort,
-        Integer vroomPort,
         String error
 ) {
 }

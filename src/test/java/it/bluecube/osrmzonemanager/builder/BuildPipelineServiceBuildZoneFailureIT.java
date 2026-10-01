@@ -76,13 +76,11 @@ class BuildPipelineServiceBuildZoneFailureIT extends BaseIT {
     void shouldMarkZoneFailedAndReleasePortsOnException() throws Exception {
         String zoneId = "test-build-fail-1";
         int osrmPort = 5001;
-        int vroomPort = 3001;
 
         ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
                 .zoneId(zoneId)
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(osrmPort)
-                .vroomPort(vroomPort)
                 .build();
         runInTransaction(() -> zoneRepository.save(zone));
 
@@ -95,15 +93,12 @@ class BuildPipelineServiceBuildZoneFailureIT extends BaseIT {
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).contains("subprocess boom");
         Assertions.assertThat(result.osrmPort()).isEqualTo(osrmPort);
-        Assertions.assertThat(result.vroomPort()).isEqualTo(vroomPort);
 
         Optional<ZoneEntity> updated = runInTransaction(() -> zoneRepository.findById(zoneId));
         Assertions.assertThat(updated).isPresent();
         Assertions.assertThat(updated.get().getStatus()).isEqualTo(ZoneStatus.FAILED.name());
         Assertions.assertThat(updated.get().getError()).contains("subprocess boom");
 
-        Mockito.verify(portAllocator).releasePort(ArgumentMatchers.eq("osrm"), ArgumentMatchers.eq(osrmPort));
-        Mockito.verify(portAllocator).releasePort(ArgumentMatchers.eq("vroom"), ArgumentMatchers.eq(vroomPort));
 
         Semaphore semaphore = (Semaphore) ReflectionTestUtils.getField(spyBuildPipelineService, "buildSlots");
         Assertions.assertThat(semaphore.availablePermits()).isEqualTo(3);

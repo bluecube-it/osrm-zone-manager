@@ -25,7 +25,7 @@ import java.util.concurrent.Executor;
 
 /**
  * On-boot zone recovery: scans the persistent zone registry and brings every
- * zone back online — either by restarting OSRM/VROOM processes or by scheduling
+ * zone back online — either by restarting the OSRM process or by scheduling
  * a full rebuild when artifacts are missing or stale.
  *
  * <p>Recovery runs asynchronously on {@code zoneManagerTaskExecutor} so that

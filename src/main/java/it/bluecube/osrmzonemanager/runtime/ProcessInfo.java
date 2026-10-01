@@ -7,18 +7,14 @@ package it.bluecube.osrmzonemanager.runtime;
 class ProcessInfo {
     final String zoneId;
     final int osrmPort;
-    final int vroomPort;
     Process osrm;
-    Process vroom;
     long osrmPid;
-    long vroomPid;
     int retries;
     volatile boolean healthy;
 
-    ProcessInfo(String zoneId, int osrmPort, int vroomPort) {
+    ProcessInfo(String zoneId, int osrmPort) {
         this.zoneId = zoneId;
         this.osrmPort = osrmPort;
-        this.vroomPort = vroomPort;
         this.healthy = true;
     }
 }

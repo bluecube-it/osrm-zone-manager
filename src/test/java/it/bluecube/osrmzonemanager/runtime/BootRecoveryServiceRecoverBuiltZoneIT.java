@@ -54,7 +54,7 @@ class BootRecoveryServiceRecoverBuiltZoneIT extends BaseIT {
     void setUp() throws Exception {
         Mockito.doReturn("/tmp/base.pbf").when(mapsService).ensureBasePbf();
         Mockito.when(buildPipelineService.buildZone(ArgumentMatchers.anyString(), ArgumentMatchers.any(), ArgumentMatchers.any()))
-                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, 3001, null)));
+                .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, null)));
         Mockito.doAnswer(inv -> {
             ((Runnable) inv.getArgument(0)).run();
             return null;

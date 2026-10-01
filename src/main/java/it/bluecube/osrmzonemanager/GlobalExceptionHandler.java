@@ -8,6 +8,7 @@ import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
 import it.bluecube.osrmzonemanager.zone.ZoneInProgressException;
 import it.bluecube.osrmzonemanager.zone.ZoneNotFoundException;
 import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
+import it.bluecube.osrmzonemanager.vroom.VroomErrorException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,6 +56,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProxyException.class)
     public ResponseEntity<Map<String, String>> handleProxyError(ProxyException e) {
         return body(HttpStatus.BAD_GATEWAY, e.getMessage());
+    }
+
+    @ExceptionHandler(VroomErrorException.class)
+    public ResponseEntity<Map<String, Object>> handleVroomError(VroomErrorException e) {
+        return ResponseEntity.status(e.httpStatus())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(Map.<String, Object>of("code", e.code(), "error", e.getMessage()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

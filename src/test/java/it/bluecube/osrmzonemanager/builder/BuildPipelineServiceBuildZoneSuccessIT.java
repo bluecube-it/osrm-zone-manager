@@ -78,13 +78,11 @@ class BuildPipelineServiceBuildZoneSuccessIT extends BaseIT {
     void shouldBuildZoneAndMarkBuilt() throws Exception {
         String zoneId = "test-build-123";
         int osrmPort = 5001;
-        int vroomPort = 3001;
 
         ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
                 .zoneId(zoneId)
                 .status(ZoneStatus.BUILDING.name())
                 .osrmPort(osrmPort)
-                .vroomPort(vroomPort)
                 .build();
         runInTransaction(() -> zoneRepository.save(zone));
 
@@ -135,7 +133,6 @@ class BuildPipelineServiceBuildZoneSuccessIT extends BaseIT {
         Assertions.assertThat(result.ok()).isTrue();
         Assertions.assertThat(result.zoneId()).isEqualTo(zoneId);
         Assertions.assertThat(result.osrmPort()).isEqualTo(osrmPort);
-        Assertions.assertThat(result.vroomPort()).isEqualTo(vroomPort);
         Assertions.assertThat(result.error()).isNull();
 
         Optional<ZoneEntity> updated = runInTransaction(() -> zoneRepository.findById(zoneId));

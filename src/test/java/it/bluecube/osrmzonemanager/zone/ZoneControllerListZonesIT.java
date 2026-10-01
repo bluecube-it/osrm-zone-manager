@@ -64,7 +64,6 @@ class ZoneControllerListZonesIT extends BaseIT {
                 .jsonPath("$[0].zoneId").isEqualTo("zonec1234567")
                 .jsonPath("$[0].status").isEqualTo(ZoneStatus.ACTIVE.name())
                 .jsonPath("$[0].osrmPort").isEqualTo(5001)
-                .jsonPath("$[0].vroomPort").isEqualTo(3001)
                 .jsonPath("$[0].process").doesNotExist();
     }
 }
