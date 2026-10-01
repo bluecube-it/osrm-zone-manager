@@ -14,6 +14,11 @@ public record ZoneInputDTO(
         /**
          * Optional GeoJSON lineStrings for routing constraints.
          */
-        JsonNode lineStrings
+        JsonNode lineStrings,
+        /**
+         * Optional routing profile name (e.g. {@code car}, {@code bus}).
+         * Defaults to {@code car} when omitted or blank.
+         */
+        String profile
 ) {
 }

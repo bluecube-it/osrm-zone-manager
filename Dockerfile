@@ -87,6 +87,8 @@ COPY --from=osmium_builder /usr/local/bin/osmium /usr/local/bin/osmium
 COPY --from=maven_builder /build/target/application.jar /app/application.jar
 COPY src/main/scripts/reduce.py /app/scripts/reduce.py
 COPY src/main/resources/config/vroom-config.template.yml /app/config/vroom-config.template.yml
+# Lua routing profiles consumed by `osrm-extract -p`; bus.lua requires car.lua, so both live in /opt
+COPY src/main/resources/config/bus.lua /opt/bus.lua
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /app/scripts/reduce.py /entrypoint.sh
 

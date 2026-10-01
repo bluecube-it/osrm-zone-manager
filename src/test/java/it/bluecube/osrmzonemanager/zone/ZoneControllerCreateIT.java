@@ -69,8 +69,35 @@ class ZoneControllerCreateIT extends BaseIT {
         response.expectStatus().isCreated()
                 .expectBody()
                 .jsonPath("$.zoneId").exists()
+                .jsonPath("$.profile").isEqualTo("car")
                 .jsonPath("$.status").isEqualTo(ZoneStatus.BUILDING.name())
                 .jsonPath("$.message").exists();
+    }
+
+    @Test
+    void shouldCreateZoneWithRequestedProfile() {
+        var response = restTestClient.post()
+                .uri("/zones")
+                .body(Map.of("polygon", samplePolygon, "profile", "bus"))
+                .exchange();
+
+        response.expectStatus().isCreated()
+                .expectBody()
+                .jsonPath("$.profile").isEqualTo("bus")
+                .jsonPath("$.status").isEqualTo(ZoneStatus.BUILDING.name());
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenProfileUnsupported() {
+        var response = restTestClient.post()
+                .uri("/zones")
+                .body(Map.of("polygon", samplePolygon, "profile", "foot"))
+                .exchange();
+
+        response.expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.error").value(error -> Assertions.assertThat(error.toString())
+                        .contains("unsupported profile 'foot'"));
     }
 
     @Test

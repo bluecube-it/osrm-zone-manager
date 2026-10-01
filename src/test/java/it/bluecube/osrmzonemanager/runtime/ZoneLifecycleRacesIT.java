@@ -168,7 +168,7 @@ class ZoneLifecycleRacesIT {
         Mockito.doThrow(new RuntimeException("register boom")).when(zoneRepository).save(ArgumentMatchers.any());
 
         Assertions.assertThatThrownBy(() ->
-                        zoneController.createZone(new ZoneInputDTO(samplePolygon, null)))
+                        zoneController.createZone(new ZoneInputDTO(samplePolygon, null, null)))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("register boom");
     }
@@ -206,7 +206,7 @@ class ZoneLifecycleRacesIT {
         Mockito.doThrow(new RuntimeException("release boom")).when(portAllocatorService).releasePort(ArgumentMatchers.anyString(), ArgumentMatchers.anyInt());
 
         Assertions.assertThatThrownBy(() ->
-                        zoneController.createZone(new ZoneInputDTO(samplePolygon, null)))
+                        zoneController.createZone(new ZoneInputDTO(samplePolygon, null, null)))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("register boom");
     }

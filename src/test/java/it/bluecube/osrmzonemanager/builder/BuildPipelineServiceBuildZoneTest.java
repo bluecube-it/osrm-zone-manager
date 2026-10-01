@@ -46,7 +46,7 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
 
         Mockito.lenient().when(config.getZonesDir()).thenReturn(zonesDir.toString());
         Mockito.lenient().when(config.getBasePbf()).thenReturn("/tmp/base.pbf");
-        Mockito.lenient().when(config.getCarLua()).thenReturn("/tmp/car.lua");
+        Mockito.lenient().when(config.profileLuaPath("car")).thenReturn(Optional.of("/tmp/car.lua"));
         Mockito.lenient().when(config.getVroomExpressDir()).thenReturn(vroomExpressDir.toString());
         Mockito.lenient().when(config.getReduceScript()).thenReturn("/tmp/reduce.py");
     }

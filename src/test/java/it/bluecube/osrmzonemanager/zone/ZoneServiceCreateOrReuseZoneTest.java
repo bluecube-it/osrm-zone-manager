@@ -64,13 +64,45 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
         polygonHash = HashUtils.sha256(TestBuilders.samplePolygon().toString().getBytes());
         zoneId = HashUtils.sha256(TestBuilders.samplePolygon().toString().getBytes()).substring(0, 12);
 
-        Mockito.when(pbfDownloadService.ensureBasePbf()).thenReturn(basePbf.toString());
+        Mockito.lenient().when(pbfDownloadService.ensureBasePbf()).thenReturn(basePbf.toString());
         Mockito.lenient().when(config.getZonesDir()).thenReturn(zonesDir.toString());
         Mockito.lenient().when(portAllocator.reservePortPair()).thenReturn(new int[]{5001, 3001});
         Mockito.lenient().when(buildPipelineService.buildZone(Mockito.anyString(), Mockito.any(), Mockito.any()))
                 .thenReturn(CompletableFuture.completedFuture(new BuildResult("z", true, 5001, 3001, null)));
         Mockito.lenient().when(objectMapper.writeValueAsBytes(Mockito.any())).thenAnswer(inv -> inv.getArgument(0).toString().getBytes());
         Mockito.lenient().when(objectMapper.writeValueAsString(Mockito.any())).thenAnswer(inv -> inv.getArgument(0).toString());
+    }
+
+    @Test
+    void shouldRejectUnsupportedProfile() {
+        Assertions.assertThatThrownBy(() ->
+                        zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "foot"))
+                .isInstanceOf(UnsupportedProfileException.class)
+                .hasMessageContaining("foot");
+        Mockito.verify(zoneStateService, Mockito.never()).save(Mockito.any());
+    }
+
+    @Test
+    void shouldPersistProfileWhenCreatingZone() {
+        Mockito.when(zoneStateService.findById(Mockito.anyString())).thenReturn(Optional.empty());
+        Mockito.when(zoneMapper.toZoneDTO(Mockito.any(), Mockito.anyString()))
+                .thenReturn(ZoneDTO.builder().zoneId("bus123").profile("bus").build());
+
+        ZoneDTO result = zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "bus");
+
+        Assertions.assertThat(result.zoneId()).isEqualTo("bus123");
+        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> "bus".equals(zone.getProfile())));
+    }
+
+    @Test
+    void shouldNormalizeProfileName() {
+        Mockito.when(zoneStateService.findById(Mockito.anyString())).thenReturn(Optional.empty());
+        Mockito.when(zoneMapper.toZoneDTO(Mockito.any(), Mockito.anyString()))
+                .thenReturn(ZoneDTO.builder().zoneId("z456").build());
+
+        zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "  BUS  ");
+
+        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> "bus".equals(zone.getProfile())));
     }
 
     @Test

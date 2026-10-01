@@ -23,12 +23,12 @@ public class ZoneController {
     private final ZoneService zoneService;
 
     /**
-     * @param request zone creation input (polygon, optional lineStrings)
+     * @param request zone creation input (polygon, optional lineStrings, optional profile)
      * @return the zone DTO — 201 for newly created, 200 for reused
      */
     @PostMapping
     public ResponseEntity<ZoneDTO> createZone(@RequestBody ZoneInputDTO request) {
-        ZoneDTO zone = zoneService.createOrReuseZone(request.polygon(), request.lineStrings());
+        ZoneDTO zone = zoneService.createOrReuseZone(request.polygon(), request.lineStrings(), request.profile());
         boolean reused = ZoneService.ZONE_REUSE_MESSAGE.equals(zone.message());
 
         ZoneDTO dto = zone.withProcess(null);

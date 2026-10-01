@@ -12,6 +12,7 @@ import java.time.Instant;
 public record ZoneDTO(
         String zoneId,
         ZoneStatus status,
+        String profile,
         Integer osrmPort,
         Integer vroomPort,
         Long osrmPid,
@@ -31,7 +32,7 @@ public record ZoneDTO(
      */
     public ZoneDTO withProcess(String process) {
         return new ZoneDTO(
-                zoneId, status, osrmPort, vroomPort, osrmPid, vroomPid,
+                zoneId, status, profile, osrmPort, vroomPort, osrmPid, vroomPid,
                 polygonHash, lineStringsHash, basePbfMtime,
                 createdAt, lastAccess, lastBuildAt, error, process, message
         );
@@ -42,7 +43,7 @@ public record ZoneDTO(
      */
     public ZoneDTO withMessage(String message) {
         return new ZoneDTO(
-                zoneId, status, osrmPort, vroomPort, osrmPid, vroomPid,
+                zoneId, status, profile, osrmPort, vroomPort, osrmPid, vroomPid,
                 polygonHash, lineStringsHash, basePbfMtime,
                 createdAt, lastAccess, lastBuildAt, error, process, message
         );

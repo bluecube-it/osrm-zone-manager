@@ -30,7 +30,7 @@ Pre-mount PBF at `/data/base/italy.osm.pbf`. Missing PBF returns HTTP 503.
 
 | Endpoint            | Method   | Purpose                                              |
 |---------------------|----------|------------------------------------------------------|
-| `POST /zones`       | POST     | Create zone (polygon + optional lineStrings GeoJSON) |
+| `POST /zones`       | POST     | Create zone (polygon + optional lineStrings + optional profile) |
 | `GET /zones`        | GET      | List zones with status                               |
 | `GET /zones/:id`    | GET      | Zone metadata                                        |
 | `DELETE /zones/:id` | DELETE   | Stop + cleanup zone                                  |
@@ -38,6 +38,27 @@ Pre-mount PBF at `/data/base/italy.osm.pbf`. Missing PBF returns HTTP 503.
 | `/:id/osrm/*`       | GET/POST | Proxy to zone's osrm-routed (radiuses injected)      |
 | `/:id/vroom/*`      | GET/POST | Proxy to zone's vroom-express                        |
 | `/actuator/health`  | GET      | Healthcheck                                          |
+
+## Profiles
+
+OSRM bakes the routing profile into the preprocessed graph, so a profile cannot be selected at
+query time. Instead the profile is fixed when the zone is created:
+
+```bash
+curl -X POST http://localhost:8080/zones \
+  -H 'Content-Type: application/json' \
+  -d '{"polygon": {...}, "profile": "bus"}'
+```
+
+- `profile` is optional; accepted values are `car` (default) and `bus`.
+- Only the profile **name** is sent — Lua script paths live in the container
+  (`osrm.zone-manager.car-lua=/opt/car.lua`, `osrm.zone-manager.bus-lua=/opt/bus.lua`).
+- Unknown profiles are rejected with HTTP 400.
+- The profile is part of the zone identity: the same polygon with `car` and `bus` yields two
+  distinct zones (ids created before profiles existed keep their id for `car`).
+- All proxied requests under `/:id/osrm/*` use the zone's profile; the `{profile}` path segment of
+  the OSRM URL is ignored by OSRM and by the gateway.
+- `vroom-express` is configured with a single `osrm` routing server per zone, matching its profile.
 
 ## Architecture
 
@@ -49,6 +70,7 @@ Single container:
     - `osrm-routed --algorithm mld -i 127.0.0.1 -p 5XXX /data/zones/<id>/map.osrm`
     - `vroom-express` on `3XXX` (config.yml templated per-zone, points at `5XXX`)
 - Builder (async): osmium extract → reduce.py → osmium merge → osrm-extract/partition/customize
+  (`-p` = zone profile, default `car`)
 - Evictor (`@Scheduled`): TTL by last_access, never evicts `building` zones
 
 Storage layout:

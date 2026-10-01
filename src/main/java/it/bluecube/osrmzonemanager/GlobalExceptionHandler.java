@@ -5,6 +5,7 @@ import it.bluecube.osrmzonemanager.maps.MissingBasePbfException;
 import it.bluecube.osrmzonemanager.proxy.PolylineDecodeException;
 import it.bluecube.osrmzonemanager.proxy.ProxyException;
 import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
+import it.bluecube.osrmzonemanager.zone.UnsupportedProfileException;
 import it.bluecube.osrmzonemanager.zone.ZoneInProgressException;
 import it.bluecube.osrmzonemanager.zone.ZoneNotFoundException;
 import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
@@ -34,6 +35,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleConflict(ZoneInProgressException e) {
         String msg = e.getMessage() + " — poll GET /zones/" + e.zoneId();
         return body(HttpStatus.CONFLICT, msg);
+    }
+
+    @ExceptionHandler(UnsupportedProfileException.class)
+    public ResponseEntity<Map<String, String>> handleUnsupportedProfile(UnsupportedProfileException e) {
+        return body(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler(ZoneUnavailableException.class)

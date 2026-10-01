@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager.zone;
 
+import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -35,6 +36,12 @@ public class ZoneEntity {
     private String basePbfMtime;
 
     private String status;
+
+    /**
+     * OSRM routing profile this zone was built with ({@code car}, {@code bus}, ...).
+     */
+    @Builder.Default
+    private String profile = OsrmZoneManagerConfig.DEFAULT_PROFILE;
 
     private int osrmPort;
 

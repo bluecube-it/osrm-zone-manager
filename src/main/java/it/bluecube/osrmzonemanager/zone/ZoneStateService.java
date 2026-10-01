@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager.zone;
 
+import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,19 @@ public class ZoneStateService {
     public Optional<ZonePorts> findPorts(String zoneId) {
         return zoneRepository.findById(zoneId)
                 .map(zone -> new ZonePorts(zone.getOsrmPort(), zone.getVroomPort()));
+    }
+
+    /**
+     * Returns the routing profile a zone was built with, defaulting to {@code car}
+     * for records created before profiles existed.
+     * Used by {@link it.bluecube.osrmzonemanager.builder.BuildPipelineService} to pick the Lua profile.
+     *
+     * @param zoneId zone identifier
+     * @return the profile name, or empty if the zone is not registered
+     */
+    public Optional<String> findProfile(String zoneId) {
+        return zoneRepository.findById(zoneId)
+                .map(zone -> OsrmZoneManagerConfig.normalizeProfile(zone.getProfile()));
     }
 
     // package-private — only ZoneService (same package) uses these entity returns

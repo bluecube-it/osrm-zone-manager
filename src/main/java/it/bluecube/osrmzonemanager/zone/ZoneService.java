@@ -14,10 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -69,18 +71,36 @@ public class ZoneService {
 
 
     /**
-     * Creates or reuses a zone for the given polygon/lineStrings input.
+     * Creates or reuses a zone using the default routing profile.
      *
      * @param polygon     required GeoJSON polygon
      * @param lineStrings optional GeoJSON lineStrings
      * @return the zone DTO (newly registered as BUILDING, or reused/active)
      */
     public ZoneDTO createOrReuseZone(JsonNode polygon, JsonNode lineStrings) {
+        return createOrReuseZone(polygon, lineStrings, null);
+    }
+
+    /**
+     * Creates or reuses a zone for the given polygon/lineStrings/profile input.
+     *
+     * <p>The zone id is derived from the content and the profile; the default profile
+     * keeps the legacy id layout so pre-existing zones are still matched.
+     *
+     * @param polygon     required GeoJSON polygon
+     * @param lineStrings optional GeoJSON lineStrings
+     * @param profile     optional routing profile name, defaults to {@code car}
+     * @return the zone DTO (newly registered as BUILDING, or reused/active)
+     * @throws UnsupportedProfileException if the profile is not shipped by the manager
+     */
+    public ZoneDTO createOrReuseZone(JsonNode polygon, JsonNode lineStrings, String profile) {
+        String resolvedProfile = resolveProfile(profile);
         String basePbf = pbfDownloadService.ensureBasePbf();
         String baseMtime = String.valueOf(computeFileMtime(basePbf));
         String polygonHash = HashUtils.sha256(objectMapper.writeValueAsBytes(polygon));
         String lineStringsHash = lineStrings != null ? HashUtils.sha256(objectMapper.writeValueAsBytes(lineStrings)) : "";
-        String zoneId = HashUtils.sha256(sha256InputBytes(polygon, lineStrings)).substring(0, ZONE_ID_HEX_LENGTH);
+        String zoneId = HashUtils.sha256(sha256InputBytes(polygon, lineStrings, resolvedProfile))
+                .substring(0, ZONE_ID_HEX_LENGTH);
 
         ZoneEntity existing = zoneStateService.findById(zoneId).orElse(null);
         if (existing != null && existing.matchesContent(polygonHash, lineStringsHash, baseMtime)) {
@@ -93,7 +113,8 @@ public class ZoneService {
         int[] ports = reservePorts();
         ZoneEntity zone = zoneStateService.findById(zoneId)
                 .filter(e -> e.matchesContent(polygonHash, lineStringsHash, baseMtime))
-                .orElseGet(() -> buildZoneEntity(zoneId, polygon, lineStrings, polygonHash, lineStringsHash, baseMtime, new int[]{ports[0], ports[1]}));
+                .orElseGet(() -> buildZoneEntity(zoneId, polygon, lineStrings, resolvedProfile,
+                        polygonHash, lineStringsHash, baseMtime, new int[]{ports[0], ports[1]}));
         zone.setStatus(ZoneStatus.BUILDING.name());
         zone.setOsrmPort(ports[0]);
         zone.setVroomPort(ports[1]);
@@ -103,6 +124,21 @@ public class ZoneService {
         launchBuild(zoneId, polygon, lineStrings);
 
         return zoneMapper.toZoneDTO(zone, ZONE_BUILD_STARTED_MESSAGE);
+    }
+
+    /**
+     * Validates and normalizes a client-supplied profile name.
+     *
+     * @param profile raw profile name, may be null/blank
+     * @return the normalized profile name
+     * @throws UnsupportedProfileException if the profile is not shipped by the manager
+     */
+    private String resolveProfile(String profile) {
+        String normalized = OsrmZoneManagerConfig.normalizeProfile(profile);
+        if (!OsrmZoneManagerConfig.SUPPORTED_PROFILES.contains(normalized)) {
+            throw new UnsupportedProfileException(normalized, OsrmZoneManagerConfig.SUPPORTED_PROFILES);
+        }
+        return normalized;
     }
 
     /**
@@ -247,16 +283,18 @@ public class ZoneService {
      * @param zoneId          the zone identifier
      * @param polygon         source GeoJSON polygon
      * @param lineStrings     source GeoJSON lineStrings (may be null)
+     * @param profile         normalized routing profile name
      * @param polygonHash     SHA-256 of serialized polygon
      * @param lineStringsHash SHA-256 of serialized lineStrings (empty if null)
      * @param baseMtime       base PBF file modification time as string
      * @param ports           {osrmPort, vroomPort}
      * @return the constructed new zone entity in BUILDING state
      */
-    private ZoneEntity buildZoneEntity(String zoneId, JsonNode polygon, JsonNode lineStrings,
+    private ZoneEntity buildZoneEntity(String zoneId, JsonNode polygon, JsonNode lineStrings, String profile,
                                        String polygonHash, String lineStringsHash, String baseMtime, int[] ports) {
         return ZoneEntity.builder()
                 .zoneId(zoneId)
+                .profile(profile)
                 .polygonHash(polygonHash)
                 .lineStringsHash(lineStringsHash)
                 .basePbfMtime(baseMtime)
@@ -357,21 +395,54 @@ public class ZoneService {
     // --- crypto / json helpers ---
 
     /**
+     * Builds the byte sequence hashed into the zone id.
+     *
+     * <p>Layout: {@code polygon [| profile] [| lineStrings]}. The profile segment is omitted for
+     * the default profile to preserve ids of zones created before profiles existed.
+     *
      * @param polygon     source GeoJSON polygon
      * @param lineStrings source GeoJSON lineStrings (may be null)
+     * @param profile     normalized routing profile name
      * @return combined bytes for zone ID generation
      */
-    private byte[] sha256InputBytes(JsonNode polygon, JsonNode lineStrings) {
+    private byte[] sha256InputBytes(JsonNode polygon, JsonNode lineStrings, String profile) {
         byte[] polygonBytes = objectMapper.writeValueAsBytes(polygon);
-        if (lineStrings == null || lineStrings.isNull()) {
-            return polygonBytes;
+        byte[] lineStringsBytes = lineStrings == null || lineStrings.isNull()
+                ? null
+                : objectMapper.writeValueAsBytes(lineStrings);
+        byte[] profileBytes = OsrmZoneManagerConfig.DEFAULT_PROFILE.equals(profile)
+                ? null
+                : profile.getBytes(StandardCharsets.UTF_8);
+
+        List<byte[]> parts = new ArrayList<>(3);
+        parts.add(polygonBytes);
+        if (profileBytes != null) {
+            parts.add(profileBytes);
         }
-        byte[] lineStringsBytes = objectMapper.writeValueAsBytes(lineStrings);
-        byte[] source = new byte[polygonBytes.length + 1 + lineStringsBytes.length];
-        System.arraycopy(polygonBytes, 0, source, 0, polygonBytes.length);
-        source[polygonBytes.length] = ZONE_ID_SEPARATOR;
-        System.arraycopy(lineStringsBytes, 0, source, polygonBytes.length + 1, lineStringsBytes.length);
-        return source;
+        if (lineStringsBytes != null) {
+            parts.add(lineStringsBytes);
+        }
+        return joinWithSeparator(parts);
+    }
+
+    /**
+     * Concatenates byte chunks separated by {@link #ZONE_ID_SEPARATOR}.
+     *
+     * @param parts chunks to join
+     * @return the joined byte array
+     */
+    private byte[] joinWithSeparator(List<byte[]> parts) {
+        int length = parts.stream().mapToInt(p -> p.length).sum() + parts.size() - 1;
+        byte[] joined = new byte[length];
+        int offset = 0;
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                joined[offset++] = ZONE_ID_SEPARATOR;
+            }
+            System.arraycopy(parts.get(i), 0, joined, offset, parts.get(i).length);
+            offset += parts.get(i).length;
+        }
+        return joined;
     }
 
     /**
