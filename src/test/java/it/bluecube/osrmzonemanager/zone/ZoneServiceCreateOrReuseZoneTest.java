@@ -74,35 +74,26 @@ class ZoneServiceCreateOrReuseZoneTest extends BaseUnitTest {
     }
 
     @Test
-    void shouldRejectUnsupportedProfile() {
-        Assertions.assertThatThrownBy(() ->
-                        zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "foot"))
-                .isInstanceOf(UnsupportedProfileException.class)
-                .hasMessageContaining("foot");
-        Mockito.verify(zoneStateService, Mockito.never()).save(Mockito.any());
-    }
-
-    @Test
     void shouldPersistProfileWhenCreatingZone() {
         Mockito.when(zoneStateService.findById(Mockito.anyString())).thenReturn(Optional.empty());
         Mockito.when(zoneMapper.toZoneDTO(Mockito.any(), Mockito.anyString()))
-                .thenReturn(ZoneDTO.builder().zoneId("bus123").profile("bus").build());
+                .thenReturn(ZoneDTO.builder().zoneId("bus123").profile(ZoneProfile.BUS).build());
 
-        ZoneDTO result = zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "bus");
+        ZoneDTO result = zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, ZoneProfile.BUS);
 
         Assertions.assertThat(result.zoneId()).isEqualTo("bus123");
-        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> "bus".equals(zone.getProfile())));
+        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> ZoneProfile.BUS.equals(zone.getProfile())));
     }
 
     @Test
-    void shouldNormalizeProfileName() {
+    void shouldDefaultToCarProfileWhenProfileIsNull() {
         Mockito.when(zoneStateService.findById(Mockito.anyString())).thenReturn(Optional.empty());
         Mockito.when(zoneMapper.toZoneDTO(Mockito.any(), Mockito.anyString()))
-                .thenReturn(ZoneDTO.builder().zoneId("z456").build());
+                .thenReturn(ZoneDTO.builder().zoneId("z789").build());
 
-        zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, "  BUS  ");
+        zoneService.createOrReuseZone(TestBuilders.samplePolygon(), null, null);
 
-        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> "bus".equals(zone.getProfile())));
+        Mockito.verify(zoneStateService).save(Mockito.argThat(zone -> ZoneProfile.CAR.equals(zone.getProfile())));
     }
 
     @Test

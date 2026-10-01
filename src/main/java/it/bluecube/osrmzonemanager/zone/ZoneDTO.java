@@ -12,7 +12,7 @@ import java.time.Instant;
 public record ZoneDTO(
         String zoneId,
         ZoneStatus status,
-        String profile,
+        ZoneProfile profile,
         Integer osrmPort,
         Integer vroomPort,
         Long osrmPid,

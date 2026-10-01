@@ -4,6 +4,7 @@ import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
 import it.bluecube.osrmzonemanager.zone.ZoneFiles;
 import it.bluecube.osrmzonemanager.zone.ZonePorts;
+import it.bluecube.osrmzonemanager.zone.ZoneProfile;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -88,17 +89,7 @@ public class BuildPipelineService {
 
         int osrmPort = ports.get().osrmPort();
         int vroomPort = ports.get().vroomPort();
-        String profile = zoneStateService.findProfile(zoneId)
-                .orElse(OsrmZoneManagerConfig.DEFAULT_PROFILE);
-        Optional<String> profileLua = config.profileLuaPath(profile);
-        if (profileLua.isEmpty()) {
-            log.error("Zone {}: profile '{}' has no configured lua path", zoneId, profile);
-            zoneStateService.markZoneFailed(zoneId, "unsupported profile: " + profile);
-            portAllocator.releasePort(SVC_OSRM, osrmPort);
-            portAllocator.releasePort(SVC_VROOM, vroomPort);
-            return CompletableFuture.completedFuture(
-                    new BuildResult(zoneId, false, osrmPort, vroomPort, "unsupported profile: " + profile));
-        }
+        ZoneProfile profile = zoneStateService.findProfile(zoneId).orElse(ZoneProfile.CAR);
         String zoneDirPath = "%s/%s".formatted(config.getZonesDir(), zoneId);
         Path zoneDir = Path.of(zoneDirPath);
 
@@ -115,7 +106,7 @@ public class BuildPipelineService {
             InputFiles inputs = writeInputFiles(zoneDir, polygon, lineStrings);
             Path regionPbf = extractRegionPbf(zoneDir, inputs.polygonPath());
             buildCombinedPbf(zoneDir, regionPbf, inputs.lineStringsPath());
-            buildOsrmMap(zoneDir, profile, profileLua.get());
+            buildOsrmMap(zoneDir, profile);
             cleanTempPBFs(zoneDir);
             prepareVroomExpressDir(zoneDir, osrmPort, vroomPort);
             zoneStateService.markZoneBuilt(zoneId);
@@ -202,21 +193,35 @@ public class BuildPipelineService {
     /**
      * Runs osrm-extract, osrm-partition, osrm-customize sequentially.
      *
-     * @param zoneDir   target zone directory
-     * @param profile   routing profile name (for logging)
-     * @param profileLua absolute path to the Lua profile script passed to {@code osrm-extract -p}
+     * @param zoneDir target zone directory
+     * @param profile zone routing profile, resolving to the Lua script passed to {@code osrm-extract -p}
      * @throws BuildException on subprocess failure or timeout
      * @throws IOException    on I/O failure
      */
-    private void buildOsrmMap(Path zoneDir, String profile, String profileLua) throws BuildException, IOException {
+    private void buildOsrmMap(Path zoneDir, ZoneProfile profile) throws BuildException, IOException {
         Path mapOutput = zoneDir.resolve(FILE_OSRM_MAP_OUTPUT);
-        log.info("Zone {}: extracting map with profile '{}' ({})", zoneDir.getFileName(), profile, profileLua);
+        String profileLua = profileLuaPath(profile);
+        log.info("Zone {}: extracting map with profile '{}' ({})",
+                zoneDir.getFileName(), profile.name(), profileLua);
         runSubprocess(List.of(
                 BINARY_OS_RM_EXTRACT, FLAG_P, profileLua,
                 FLAG_O, mapOutput.toString(), FILE_COMBINED_PBF
         ), zoneDir.toFile());
         runSubprocess(List.of(BINARY_OS_RM_PARTITION, FILE_OSRM_MAP_BASE), zoneDir.toFile());
         runSubprocess(List.of(BINARY_OS_RM_CUSTOMIZE, FILE_OSRM_MAP_BASE), zoneDir.toFile());
+    }
+
+    /**
+     * Resolves the Lua profile script for a routing profile.
+     *
+     * @param profile zone routing profile
+     * @return the absolute path to the Lua script
+     */
+    private String profileLuaPath(ZoneProfile profile) {
+        return switch (profile) {
+            case CAR -> config.getCarLua();
+            case BUS -> config.getBusLua();
+        };
     }
 
     /**

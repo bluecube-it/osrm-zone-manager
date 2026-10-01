@@ -5,13 +5,13 @@ import it.bluecube.osrmzonemanager.maps.MissingBasePbfException;
 import it.bluecube.osrmzonemanager.proxy.PolylineDecodeException;
 import it.bluecube.osrmzonemanager.proxy.ProxyException;
 import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
-import it.bluecube.osrmzonemanager.zone.UnsupportedProfileException;
 import it.bluecube.osrmzonemanager.zone.ZoneInProgressException;
 import it.bluecube.osrmzonemanager.zone.ZoneNotFoundException;
 import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -37,11 +37,6 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.CONFLICT, msg);
     }
 
-    @ExceptionHandler(UnsupportedProfileException.class)
-    public ResponseEntity<Map<String, String>> handleUnsupportedProfile(UnsupportedProfileException e) {
-        return body(HttpStatus.BAD_REQUEST, e.getMessage());
-    }
-
     @ExceptionHandler(ZoneUnavailableException.class)
     public ResponseEntity<Map<String, String>> handleUnavailable(ZoneUnavailableException e) {
         return body(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
@@ -60,6 +55,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProxyException.class)
     public ResponseEntity<Map<String, String>> handleProxyError(ProxyException e) {
         return body(HttpStatus.BAD_GATEWAY, e.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleUnreadableBody(HttpMessageNotReadableException e) {
+        Throwable cause = e.getMostSpecificCause();
+        String detail = cause.getMessage() != null ? cause.getMessage() : "malformed request body";
+        return body(HttpStatus.BAD_REQUEST, detail);
     }
 
     @ExceptionHandler(PolylineDecodeException.class)

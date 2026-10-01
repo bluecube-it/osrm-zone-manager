@@ -1,6 +1,5 @@
 package it.bluecube.osrmzonemanager.zone;
 
-import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -38,10 +37,12 @@ public class ZoneEntity {
     private String status;
 
     /**
-     * OSRM routing profile this zone was built with ({@code car}, {@code bus}, ...).
+     * OSRM routing profile this zone was built with, persisted as the enum name
+     * ({@code CAR}, {@code BUS}).
      */
+    @Enumerated(EnumType.STRING)
     @Builder.Default
-    private String profile = OsrmZoneManagerConfig.DEFAULT_PROFILE;
+    private ZoneProfile profile = ZoneProfile.CAR;
 
     private int osrmPort;
 

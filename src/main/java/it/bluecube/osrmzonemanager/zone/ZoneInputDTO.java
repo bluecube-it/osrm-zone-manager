@@ -16,9 +16,9 @@ public record ZoneInputDTO(
          */
         JsonNode lineStrings,
         /**
-         * Optional routing profile name (e.g. {@code car}, {@code bus}).
-         * Defaults to {@code car} when omitted or blank.
+         * Optional routing profile ({@code CAR}, {@code BUS}, any case; defaults to
+         * {@link ZoneProfile#CAR} when omitted or null).
          */
-        String profile
+        ZoneProfile profile
 ) {
 }

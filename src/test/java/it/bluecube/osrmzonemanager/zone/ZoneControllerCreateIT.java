@@ -69,7 +69,7 @@ class ZoneControllerCreateIT extends BaseIT {
         response.expectStatus().isCreated()
                 .expectBody()
                 .jsonPath("$.zoneId").exists()
-                .jsonPath("$.profile").isEqualTo("car")
+                .jsonPath("$.profile").isEqualTo("CAR")
                 .jsonPath("$.status").isEqualTo(ZoneStatus.BUILDING.name())
                 .jsonPath("$.message").exists();
     }
@@ -78,13 +78,31 @@ class ZoneControllerCreateIT extends BaseIT {
     void shouldCreateZoneWithRequestedProfile() {
         var response = restTestClient.post()
                 .uri("/zones")
+                .body(Map.of("polygon", samplePolygon, "profile", "BUS"))
+                .exchange();
+
+        response.expectStatus().isCreated()
+                .expectBody()
+                .jsonPath("$.zoneId").exists()
+                .jsonPath("$.profile").isEqualTo("BUS")
+                .jsonPath("$.status").isEqualTo(ZoneStatus.BUILDING.name());
+
+        String zoneId = objectMapper.readTree(response.returnResult(String.class).getResponseBody())
+                .get("zoneId").asText();
+        Assertions.assertThat(zoneRepository.findById(zoneId).orElseThrow().getProfile())
+                .isEqualTo(ZoneProfile.BUS);
+    }
+
+    @Test
+    void shouldResolveProfileCaseInsensitively() {
+        var response = restTestClient.post()
+                .uri("/zones")
                 .body(Map.of("polygon", samplePolygon, "profile", "bus"))
                 .exchange();
 
         response.expectStatus().isCreated()
                 .expectBody()
-                .jsonPath("$.profile").isEqualTo("bus")
-                .jsonPath("$.status").isEqualTo(ZoneStatus.BUILDING.name());
+                .jsonPath("$.profile").isEqualTo("BUS");
     }
 
     @Test
