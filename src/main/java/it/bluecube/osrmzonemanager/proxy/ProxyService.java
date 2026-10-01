@@ -83,6 +83,21 @@ public class ProxyService {
         return forward(request, port, path, query);
     }
 
+    /**
+     * Forwards a request to an explicit loopback port, bypassing the zone registry. Used by the
+     * global whole-map proxy served under {@code /osrm/{profile}/**}, whose target is resolved from
+     * the global instance registry instead of the database.
+     *
+     * @param port    loopback port of the target OSRM instance
+     * @param request the original request
+     * @param path    path to forward (after the proxy prefix was stripped)
+     * @param query   query string to forward, without leading {@code ?}
+     * @return the OSRM response
+     */
+    public ResponseEntity<byte[]> forwardToPort(int port, HttpServletRequest request, String path, String query) {
+        return forward(request, port, path, query);
+    }
+
     private ResponseEntity<byte[]> forward(HttpServletRequest request, int port, String path, String query) {
         String target = buildTargetUrl(port, path, query);
         HttpHeaders headers = buildHeaders(request, port);

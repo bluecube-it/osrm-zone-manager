@@ -6,23 +6,21 @@ import it.bluecube.osrmzonemanager.zone.ZoneStatus;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClient;
 
-import java.time.Instant;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Supervises the per-zone {@code osrm-routed} subprocess: start, health probing, restart and shutdown.
+ *
+ * <p>Process spawning and probing are delegated to {@link OsrmProcessLauncher}, which is shared with
+ * the global whole-map instances.
  *
  * <p>VROOM is not supervised here: it is spawned per request by the in-process VROOM service, so
  * there is no long-lived VROOM process (and no per-zone VROOM port) to manage.
@@ -33,34 +31,15 @@ import java.util.concurrent.TimeUnit;
 public class ProcessSupervisorService {
 
     private static final int OSRM_HEALTH_TIMEOUT_SECONDS = 120;
-    private static final int PING_TIMEOUT_MS = 5_000;
     private static final int MAX_HEALTH_RETRIES = 3;
     private static final String FILE_OSRM_MAP_BASE = "map";
-    private static final String BINARY_OS_RM_ROUTED = "osrm-routed";
-    private static final String FLAG_ALGORITHM = "--algorithm";
-    private static final String ALGORITHM_MLD = "mld";
-    private static final String FLAG_IP = "--ip";
-    private static final String FLAG_PORT = "--port";
-    private static final String FLAG_MMAP = "--mmap";
-    private static final String LOCALHOST = "127.0.0.1";
-    private static final String HTTP_SCHEME = "http://";
-    private static final String ROUTE_PATH_DRIVING = "/route/v1/driving/0,0;0,0";
 
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
+    private final OsrmProcessLauncher launcher;
 
     private final Map<String, ProcessInfo> registry = new ConcurrentHashMap<>();
     private final Map<String, Object> zoneLocks = new ConcurrentHashMap<>();
-    private final RestClient pingClient = RestClient.builder()
-            .requestFactory(clientHttpRequestFactory())
-            .build();
-
-    private static SimpleClientHttpRequestFactory clientHttpRequestFactory() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(PING_TIMEOUT_MS);
-        factory.setReadTimeout(PING_TIMEOUT_MS);
-        return factory;
-    }
 
     public void startZone(String zoneId) {
         Object lock = zoneLocks.computeIfAbsent(zoneId, k -> new Object());
@@ -153,20 +132,10 @@ public class ProcessSupervisorService {
     }
 
     private void startOsrm(ProcessInfo info) {
-        String mapBase = config.getZonesDir() + "/" + info.zoneId + "/" + FILE_OSRM_MAP_BASE;
-        List<String> command = new java.util.ArrayList<>(List.of(
-                BINARY_OS_RM_ROUTED, FLAG_ALGORITHM, ALGORITHM_MLD,
-                FLAG_IP, LOCALHOST, FLAG_PORT, String.valueOf(info.osrmPort), mapBase
-        ));
-        if (config.isOsrmMmap()) {
-            command.add(FLAG_MMAP);
-        }
-
+        Path mapBase = Path.of(config.getZonesDir(), info.zoneId, FILE_OSRM_MAP_BASE);
         log.info("Zone {}: starting osrm-routed on port {} (map={})", info.zoneId, info.osrmPort, mapBase);
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.inheritIO();
         try {
-            info.osrm = pb.start();
+            info.osrm = launcher.launch(mapBase, info.osrmPort);
             info.osrmPid = info.osrm.pid();
         } catch (Exception e) {
             log.error("Zone {}: failed to start osrm-routed: {}", info.zoneId, e.getMessage());
@@ -174,14 +143,11 @@ public class ProcessSupervisorService {
             return;
         }
 
-        boolean ok = waitHealth(
-                HTTP_SCHEME + LOCALHOST + ":" + info.osrmPort + ROUTE_PATH_DRIVING,
-                OSRM_HEALTH_TIMEOUT_SECONDS
-        );
+        boolean ok = launcher.waitRouteHealth(info.osrmPort, OSRM_HEALTH_TIMEOUT_SECONDS);
         info.healthy = ok;
         if (!ok) {
             log.error("Zone {}: osrm-routed timeout on port {}", info.zoneId, info.osrmPort);
-            killSingle(info.osrm, "osrm");
+            launcher.kill(info.osrm, "osrm");
             info.osrm = null;
         } else {
             log.info("Zone {}: osrm-routed healthy on port {} (pid={})",
@@ -189,79 +155,9 @@ public class ProcessSupervisorService {
         }
     }
 
-    private boolean waitHealth(String url, int timeoutSeconds) {
-        Instant deadline = Instant.now().plusSeconds(timeoutSeconds);
-        while (Instant.now().isBefore(deadline)) {
-            if (ping(url)) {
-                return true;
-            }
-            try {
-                TimeUnit.SECONDS.sleep(2);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-        }
-        return false;
-    }
-
-    private boolean ping(String url) {
-        try {
-            ResponseEntity<Void> response = pingClient.get()
-                    .uri(url)
-                    .retrieve()
-                    .onStatus(status -> true, (req, resp) -> {
-                    })
-                    .toBodilessEntity();
-            int status = response.getStatusCode().value();
-            return status < 500 || status == 400;
-        } catch (ResourceAccessException e) {
-            log.debug("Ping failed for {}: {}", url, e.getMessage());
-            return false;
-        }
-    }
-
     private void kill(ProcessInfo info) {
         if (info != null) {
-            killSingle(info.osrm, "osrm(" + info.zoneId + ")");
-        }
-    }
-
-    private void killSingle(Process process, String name) {
-        if (process == null || !process.isAlive()) {
-            return;
-        }
-        try {
-            killDescendants(process, name);
-            process.destroy();
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                process.waitFor(3, TimeUnit.SECONDS);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-        }
-        log.debug("Killed {} (pid={})", name, process.pid());
-    }
-
-    private void killDescendants(Process process, String name) {
-        try {
-            process.descendants().forEach(ph -> {
-                try {
-                    ph.destroy();
-                    try {
-                        ph.onExit().get(1, TimeUnit.SECONDS);
-                    } catch (Exception e) {
-                        log.debug("Descendant {} of {} did not terminate within 1s, forcibly killing", ph.pid(), name);
-                        ph.destroyForcibly();
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to kill descendant of {} (pid={}): {}", name, ph.pid(), e.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            log.debug("Failed to enumerate descendants of {} (pid={}): {}", name, process.pid(), e.getMessage());
+            launcher.kill(info.osrm, "osrm(" + info.zoneId + ")");
         }
     }
 
@@ -286,8 +182,7 @@ public class ProcessSupervisorService {
     }
 
     private void checkOne(String zoneId, ProcessInfo info) {
-        String osrmUrl = HTTP_SCHEME + LOCALHOST + ":" + info.osrmPort + ROUTE_PATH_DRIVING;
-        boolean osrmOk = ping(osrmUrl);
+        boolean osrmOk = launcher.ping(info.osrmPort);
 
         if (osrmOk) {
             if (!info.healthy) {

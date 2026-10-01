@@ -1,14 +1,15 @@
 package it.bluecube.osrmzonemanager;
 
 import it.bluecube.osrmzonemanager.builder.BuildException;
+import it.bluecube.osrmzonemanager.global.GlobalOsrmUnavailableException;
 import it.bluecube.osrmzonemanager.maps.MissingBasePbfException;
 import it.bluecube.osrmzonemanager.proxy.PolylineDecodeException;
 import it.bluecube.osrmzonemanager.proxy.ProxyException;
 import it.bluecube.osrmzonemanager.proxy.ProxyTargetUnreachableException;
+import it.bluecube.osrmzonemanager.vroom.VroomErrorException;
 import it.bluecube.osrmzonemanager.zone.ZoneInProgressException;
 import it.bluecube.osrmzonemanager.zone.ZoneNotFoundException;
 import it.bluecube.osrmzonemanager.zone.ZoneUnavailableException;
-import it.bluecube.osrmzonemanager.vroom.VroomErrorException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +41,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ZoneUnavailableException.class)
     public ResponseEntity<Map<String, String>> handleUnavailable(ZoneUnavailableException e) {
+        return body(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+    }
+
+    @ExceptionHandler(GlobalOsrmUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleGlobalOsrmUnavailable(GlobalOsrmUnavailableException e) {
         return body(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
     }
 

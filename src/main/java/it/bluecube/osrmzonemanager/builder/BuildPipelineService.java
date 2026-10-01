@@ -12,17 +12,15 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Orchestrates the build pipeline for a single OSRM zone.
@@ -35,7 +33,6 @@ public class BuildPipelineService {
 
     private static final int SUBPROCESS_TIMEOUT_SECONDS = 600;
     private static final int MAX_CONCURRENT_BUILDS = 3;
-    private static final int MAX_OUTPUT_LINES = 500;
     private static final String FILE_REGION_PBF = "region.osm.pbf";
     private static final String FILE_CUSTOM_WAYS_PBF = "custom_ways.pbf";
     private static final String FILE_COMBINED_PBF = "combined.osm.pbf";
@@ -54,6 +51,7 @@ public class BuildPipelineService {
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
     private final ObjectMapper objectMapper;
+    private final OsrmCommandRunner commandRunner;
     private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
 
     /**
@@ -182,7 +180,7 @@ public class BuildPipelineService {
      */
     private void buildOsrmMap(Path zoneDir, ZoneProfile profile) throws BuildException, IOException {
         Path mapOutput = zoneDir.resolve(FILE_OSRM_MAP_OUTPUT);
-        String profileLua = profileLuaPath(profile);
+        String profileLua = commandRunner.profileLuaPath(profile);
         log.info("Zone {}: extracting map with profile '{}' ({})",
                 zoneDir.getFileName(), profile.name(), profileLua);
         runSubprocess(List.of(
@@ -191,19 +189,6 @@ public class BuildPipelineService {
         ), zoneDir.toFile());
         runSubprocess(List.of(BINARY_OS_RM_PARTITION, FILE_OSRM_MAP_BASE), zoneDir.toFile());
         runSubprocess(List.of(BINARY_OS_RM_CUSTOMIZE, FILE_OSRM_MAP_BASE), zoneDir.toFile());
-    }
-
-    /**
-     * Resolves the Lua profile script for a routing profile.
-     *
-     * @param profile zone routing profile
-     * @return the absolute path to the Lua script
-     */
-    private String profileLuaPath(ZoneProfile profile) {
-        return switch (profile) {
-            case CAR -> config.getCarLua();
-            case BUS -> config.getBusLua();
-        };
     }
 
     /**
@@ -223,7 +208,9 @@ public class BuildPipelineService {
     }
 
     /**
-     * Runs an external subprocess with a timeout.
+     * Runs an external subprocess with the zone build timeout.
+     *
+     * <p>Protected so tests can stub the pipeline stages without executing real binaries.
      *
      * @param command command and arguments
      * @param cwd     working directory (or null for current directory)
@@ -231,48 +218,7 @@ public class BuildPipelineService {
      * @throws IOException    on I/O failure
      */
     protected void runSubprocess(List<String> command, File cwd) throws IOException {
-        log.info("Starting subprocess: {}", String.join(" ", command));
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (cwd != null) {
-            pb.directory(cwd);
-        }
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-
-        Deque<String> output = new ArrayDeque<>();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.addLast(line);
-                if (output.size() > MAX_OUTPUT_LINES) {
-                    output.removeFirst();
-                }
-                log.debug("{}", line);
-            }
-        }
-
-        boolean finished;
-        try {
-            finished = process.waitFor(SUBPROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BuildException("subprocess wait interrupted", e);
-        }
-        if (!finished) {
-            process.destroyForcibly();
-            throw new BuildException("subprocess timed out after "
-                    + SUBPROCESS_TIMEOUT_SECONDS + "s: " + String.join(" ", command));
-        }
-        if (process.exitValue() != 0) {
-            List<String> tailList = new ArrayList<>(output);
-            String tail = String.join("\n", tailList.subList(
-                    Math.max(0, tailList.size() - 20), tailList.size()));
-            throw new BuildException("subprocess failed (rc=" + process.exitValue()
-                    + "): " + String.join(" ", command) + " - " + tail);
-        }
-        if (!output.isEmpty()) {
-            log.info("{}: {}", String.join(" ", command), output.getLast());
-        }
+        commandRunner.run(command, cwd, SUBPROCESS_TIMEOUT_SECONDS);
     }
 
     /**

@@ -58,3 +58,11 @@ jobs:
             -v "$PWD/.github/scripts:/test:ro" \
             --entrypoint bash \
             osrm-zone-manager:smoke /test/docker-smoke-test.sh
+
+      # Boots the packaged app against a tiny synthetic PBF (the Maven ITs stub the pipeline) and
+      # verifies the global per-profile instances served on /osrm/{profile}/**, plus the zone API
+      # on the same map.
+      - name: Global whole-map instances end-to-end test
+        env:
+          IMAGE: osrm-zone-manager:smoke
+        run: bash .github/scripts/docker-global-osrm-test.sh

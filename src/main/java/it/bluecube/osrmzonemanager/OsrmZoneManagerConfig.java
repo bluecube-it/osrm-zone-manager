@@ -1,5 +1,6 @@
 package it.bluecube.osrmzonemanager;
 
+import it.bluecube.osrmzonemanager.zone.ZoneProfile;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -7,6 +8,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Data
 @Validated
@@ -115,7 +117,41 @@ public class OsrmZoneManagerConfig {
 
     private long minPbfSize = 1_048_576;
 
+    /**
+     * When {@code true} (default) one global {@code osrm-routed} instance per {@link
+     * it.bluecube.osrmzonemanager.zone.ZoneProfile} is built from the whole {@link #basePbf} at
+     * boot and served under {@code /osrm/{profile}/**}. Set to {@code false} to disable the
+     * global map entirely (zone-only operation).
+     */
+    private boolean globalOsrmEnabled = true;
+
+    /**
+     * Wall-clock budget, in seconds, for a single osrm-extract/partition/customize stage of the
+     * global (whole-map) build. Much larger than the zone default because the input is the entire
+     * base PBF.
+     */
+    private int globalBuildTimeoutSeconds = 7_200;
+
     public String getZonesDir() {
         return dataDir + "/zones";
+    }
+
+    /**
+     * Directory holding the per-profile preprocessed graphs of the whole base map.
+     *
+     * @return {@code <data-dir>/global} — one subdirectory per profile, lower-case profile name
+     */
+    public String getGlobalDir() {
+        return dataDir + "/global";
+    }
+
+    /**
+     * Directory holding the preprocessed graph of the whole base map for one profile.
+     *
+     * @param profile routing profile
+     * @return {@code <data-dir>/global/<profile>}, profile name lower-cased
+     */
+    public String getGlobalProfileDir(ZoneProfile profile) {
+        return getGlobalDir() + "/" + profile.name().toLowerCase(Locale.ROOT);
     }
 }

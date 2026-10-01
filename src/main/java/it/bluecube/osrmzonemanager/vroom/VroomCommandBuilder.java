@@ -32,6 +32,24 @@ public class VroomCommandBuilder {
     private final OsrmZoneManagerConfig config;
 
     /**
+     * Maps a zone profile to the VROOM routing-server names to register.
+     *
+     * <p>{@code car} is always included: VROOM defaults to that profile name for vehicles without an
+     * explicit {@code profile} key, and zones built before profiles existed only ever exposed {@code car}.
+     *
+     * @param profile zone routing profile ({@code null} is treated as {@link ZoneProfile#CAR})
+     * @return profile names, {@code car} first
+     */
+    static List<String> vroomProfileNames(ZoneProfile profile) {
+        ZoneProfile resolved = profile == null ? ZoneProfile.CAR : profile;
+        String name = resolved.name().toLowerCase(Locale.ROOT);
+        if (DEFAULT_VROOM_PROFILE.equals(name)) {
+            return List.of(DEFAULT_VROOM_PROFILE);
+        }
+        return List.of(DEFAULT_VROOM_PROFILE, name);
+    }
+
+    /**
      * Builds the argv for a solving run.
      *
      * @param profile  zone routing profile ({@code null} is treated as {@link ZoneProfile#CAR})
@@ -77,23 +95,5 @@ public class VroomCommandBuilder {
     public List<String> buildHealthcheck(ZoneProfile profile, int osrmPort) {
         return build(profile, osrmPort, new VroomOptions(config.getVroomThreads(), config.getVroomExplore(),
                 false, false, 0));
-    }
-
-    /**
-     * Maps a zone profile to the VROOM routing-server names to register.
-     *
-     * <p>{@code car} is always included: VROOM defaults to that profile name for vehicles without an
-     * explicit {@code profile} key, and zones built before profiles existed only ever exposed {@code car}.
-     *
-     * @param profile zone routing profile ({@code null} is treated as {@link ZoneProfile#CAR})
-     * @return profile names, {@code car} first
-     */
-    static List<String> vroomProfileNames(ZoneProfile profile) {
-        ZoneProfile resolved = profile == null ? ZoneProfile.CAR : profile;
-        String name = resolved.name().toLowerCase(Locale.ROOT);
-        if (DEFAULT_VROOM_PROFILE.equals(name)) {
-            return List.of(DEFAULT_VROOM_PROFILE);
-        }
-        return List.of(DEFAULT_VROOM_PROFILE, name);
     }
 }

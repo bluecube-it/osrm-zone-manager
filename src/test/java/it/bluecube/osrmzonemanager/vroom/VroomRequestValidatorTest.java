@@ -12,8 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 class VroomRequestValidatorTest extends BaseUnitTest {
 
-    private VroomRequestValidator validator;
     private final JsonMapper mapper = JsonMapper.builder().build();
+    private VroomRequestValidator validator;
 
     @BeforeEach
     void setUp() {
@@ -32,7 +32,7 @@ class VroomRequestValidatorTest extends BaseUnitTest {
     @Test
     void acceptsShipmentsAndVehicles() {
         Assertions.assertThatCode(() -> validator.validate(json("""
-                {"shipments":[{"pickup":{"id":1},"delivery":{"id":2}}],"vehicles":[{"id":0}]}""")))
+                        {"shipments":[{"pickup":{"id":1},"delivery":{"id":2}}],"vehicles":[{"id":0}]}""")))
                 .doesNotThrowAnyException();
     }
 

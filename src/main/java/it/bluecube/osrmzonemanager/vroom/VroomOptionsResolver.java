@@ -27,6 +27,13 @@ public class VroomOptionsResolver {
     private final OsrmZoneManagerConfig config;
 
     /**
+     * @return the compiled-in default override keys, for docs and tests
+     */
+    public static Set<String> defaultOverrides() {
+        return Set.copyOf(Arrays.asList("c", "g", "l", "t", "x"));
+    }
+
+    /**
      * @param body parsed VROOM request payload
      * @return the effective options for this request
      */
@@ -89,12 +96,5 @@ public class VroomOptionsResolver {
             return fallback;
         }
         return requested;
-    }
-
-    /**
-     * @return the compiled-in default override keys, for docs and tests
-     */
-    public static Set<String> defaultOverrides() {
-        return Set.copyOf(Arrays.asList("c", "g", "l", "t", "x"));
     }
 }

@@ -58,6 +58,30 @@ public class VroomService {
     private volatile byte[] healthcheckPayload;
 
     /**
+     * Maps a vroom exit code to the HTTP response, keeping the {@code vroom-express} contract:
+     * 0 → 200, 2 → 400, anything else → 500, with stdout relayed as the body.
+     *
+     * @param exitCode   process exit code
+     * @param stdout     captured stdout
+     * @param healthOnly when true the body is always empty (health-probe contract)
+     * @return the response to send to the caller
+     */
+    static ResponseEntity<byte[]> mapExitCode(int exitCode, byte[] stdout, boolean healthOnly) {
+        if (healthOnly) {
+            return exitCode == 0
+                    ? ResponseEntity.ok().build()
+                    : ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+        HttpStatus status = switch (exitCode) {
+            case 0 -> HttpStatus.OK;
+            case 2 -> HttpStatus.BAD_REQUEST;
+            default -> HttpStatus.INTERNAL_SERVER_ERROR;
+        };
+        byte[] body = stdout != null && stdout.length > 0 ? stdout : INTERNAL_ERROR_BODY;
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(body);
+    }
+
+    /**
      * Solves a VROOM request for the given zone by spawning the {@code vroom} binary.
      *
      * @param zoneId zone identifier
@@ -180,30 +204,6 @@ public class VroomService {
             os.write(stdin);
             os.flush();
         }
-    }
-
-    /**
-     * Maps a vroom exit code to the HTTP response, keeping the {@code vroom-express} contract:
-     * 0 → 200, 2 → 400, anything else → 500, with stdout relayed as the body.
-     *
-     * @param exitCode   process exit code
-     * @param stdout     captured stdout
-     * @param healthOnly when true the body is always empty (health-probe contract)
-     * @return the response to send to the caller
-     */
-    static ResponseEntity<byte[]> mapExitCode(int exitCode, byte[] stdout, boolean healthOnly) {
-        if (healthOnly) {
-            return exitCode == 0
-                    ? ResponseEntity.ok().build()
-                    : ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-        HttpStatus status = switch (exitCode) {
-            case 0 -> HttpStatus.OK;
-            case 2 -> HttpStatus.BAD_REQUEST;
-            default -> HttpStatus.INTERNAL_SERVER_ERROR;
-        };
-        byte[] body = stdout != null && stdout.length > 0 ? stdout : INTERNAL_ERROR_BODY;
-        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(body);
     }
 
     private ResponseEntity<byte[]> internalError(boolean healthOnly) {

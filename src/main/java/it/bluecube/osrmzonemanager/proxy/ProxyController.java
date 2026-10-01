@@ -27,28 +27,8 @@ public class ProxyController {
      */
     @RequestMapping(value = "/{zoneId}/osrm/**", method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<byte[]> proxyOsrm(@PathVariable String zoneId, HttpServletRequest request) {
-        var path = extractPath(request, "/" + zoneId + "/osrm/");
+        var path = ProxyPaths.stripPrefix(request, "/" + zoneId + "/osrm/");
         String newQuery = proxyService.buildOsrmQuery(request, path);
         return proxyService.forwardToZone(zoneId, request, path, newQuery);
-    }
-
-    /**
-     * Extracts the remaining part of a path after removing a specified prefix.
-     * The path is read from the request URI and stripped of context path first.
-     *
-     * @param request the HttpServletRequest containing the URI to parse
-     * @param prefix  the prefix to be removed from the path
-     * @return the remaining path after the prefix, or an empty string if the prefix is not found
-     */
-    private String extractPath(HttpServletRequest request, String prefix) {
-        String uri = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
-            uri = uri.substring(contextPath.length());
-        }
-        if (uri != null && uri.startsWith(prefix)) {
-            return uri.substring(prefix.length());
-        }
-        return "";
     }
 }
