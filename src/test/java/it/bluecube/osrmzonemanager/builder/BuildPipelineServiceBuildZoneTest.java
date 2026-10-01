@@ -1,6 +1,7 @@
 package it.bluecube.osrmzonemanager.builder;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
+import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
 import it.bluecube.test.BaseUnitTest;
 import it.bluecube.test.TestBuilders;
@@ -80,7 +81,8 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
 
     @Test
     void shouldMarkZoneFailedAndReleasePortsOnException() throws Exception {
-        BuildPipelineService target = new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config)) {
+        BuildPipelineService target = new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config),
+                new OsrmMapFingerprint()) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) {
                 throw new BuildException("boom");
@@ -114,7 +116,8 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
     }
 
     private BuildPipelineService buildService() {
-        return new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config)) {
+        return new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config),
+                new OsrmMapFingerprint()) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) throws IOException {
                 if ("osmium".equals(command.get(0)) && "extract".equals(command.get(1))) {

@@ -65,13 +65,16 @@ curl 'http://localhost:8080/osrm/BUS/table/v1/driving/9.19,45.48;9.20,45.47'  # 
 curl http://localhost:8080/osrm                                              # status per profile
 ```
 
-- Preprocessed graphs live in `/data/global/<profile>` (`map.osrm.*`) and are reused across restarts. They are rebuilt
-  only when missing or when the base PBF changed (mtime sidecar `base-pbf.mtime`).
+- Preprocessed graphs live in `/data/global/<profile>` (`map.osrm.*`) and are reused across restarts. The marker
+  `map.fingerprint` records the OSRM version and the base PBF mtime: the graph is rebuilt whenever either changes (a
+  new OSRM release in the image makes older graphs unreadable, and rebuilding is the only fix).
+- `GET /osrm` always lists every profile — they are registered up-front, so a profile waiting for its turn reads
+  `PENDING`, then `BUILDING`, `STARTING`, `READY`.
 - The build (`osrm-extract` → `osrm-partition` → `osrm-customize`) runs asynchronously at startup, one profile after
   the other, with a per-stage timeout of `GLOBAL_BUILD_TIMEOUT_SECONDS` (default 7200). Whole-Italy graphs need several
   GB of disk and a long first boot; readiness of the container is not blocked by it.
-- Requests for a profile that is still `BUILDING`/`STARTING`, has `FAILED`, or is unknown get HTTP 503 (unknown profile
-  names get HTTP 400). `DEGRADED` profiles still serve traffic.
+- Requests for a profile that is `PENDING`/`BUILDING`/`STARTING`, has `FAILED`, or is unknown get HTTP 503 (unknown
+  profile names get HTTP 400). `DEGRADED` profiles still serve traffic.
 - Radiuses are injected exactly like in the zone proxy (`OSRM_DEFAULT_RADIUS`, header `x-osrm-radius`).
 - Set `GLOBAL_OSRM_ENABLED=false` to skip global instances entirely (zone-only operation).
 
@@ -116,7 +119,7 @@ Single container:
   (`-r osrm -a <profile>:127.0.0.1 -p <profile>:5XXX`, request body on stdin), bounded by
   `osrm.zone-manager.vroom-max-concurrent`
 - Builder (async): osmium extract → reduce.py → osmium merge → osrm-extract/partition/customize (`-p` = zone profile,
-  default `car`)
+  default `car`), then writes the `map.fingerprint` marker (OSRM version + base PBF mtime)
 - Evictor (`@Scheduled`): TTL by last_access, never evicts `building` zones
 
 Storage layout:
@@ -124,10 +127,12 @@ Storage layout:
 - `/config` — GCS FUSE bucket (persistent) — zone registry backups/config
 - `/data` — ephemeral (emptyDir / tmpfs) — base PBF + zone build artifacts
     - `/data/base/italy.osm.pbf` — source PBF (pre-mounted)
-    - `/data/zones/<id>/` — `map.osrm.*`, `polygon.geojson`, `lineStrings.geojson`
-    - `/data/global/<profile>/` — whole-map `map.osrm.*` + `base-pbf.mtime` marker
-- On boot: reads PostgreSQL registry → rebuilds zones from stored polygon/lineStrings; then builds/start the global
-  whole-map instances
+    - `/data/zones/<id>/` — `map.osrm.*`, `map.fingerprint`, `polygon.geojson`, `lineStrings.geojson`
+    - `/data/global/<profile>/` — whole-map `map.osrm.*` + `map.fingerprint` marker
+- On boot: reads PostgreSQL registry → starts the zones whose map is still loadable, rebuilds the others (including
+  `FAILED` ones) from the stored polygon/lineStrings; then builds/starts the global whole-map instances
+- Map fingerprint: a map produced by a different OSRM release cannot be loaded (`osrm_fingerprint.meta` error), so
+  bumping the OSRM version in the image invalidates every zone and global map and triggers an automatic rebuild
 
 ## Versions
 
@@ -154,6 +159,7 @@ Storage layout:
 | `DB_PASSWORD`                  | `osrm`                     | PostgreSQL password                                                            |
 | `ZONE_TTL_DAYS`                | `90`                       | Evict zones not accessed in N days                                             |
 | `OSRM_DEFAULT_RADIUS`          | `50`                       | Radiuses injected (meters) for /route and /table                               |
+| `OSRM_START_TIMEOUT_SECONDS`   | `120`                      | Budget for a zone `osrm-routed` to answer the health probe before `FAILED`     |
 | `VROOM_THREADS`                | `6`                        | Solving threads handed to each `vroom` run (`-t`)                              |
 | `VROOM_MAX_CONCURRENT`         | `16`                       | Max concurrent `vroom` processes; extra requests queue                         |
 | `EVICTOR_INTERVAL_MIN`         | `10`                       | Evictor interval in minutes                                                    |

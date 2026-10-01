@@ -31,8 +31,12 @@ class BootRecoveryServiceRecoverUnknownStatusIT extends BaseIT {
     @MockitoBean
     private MapsService mapsService;
 
+    @MockitoBean
+    private OsrmMapFingerprint mapFingerprint;
+
     @BeforeEach
     void setUp() throws Exception {
+        Mockito.lenient().when(mapFingerprint.pbfFingerprint(ArgumentMatchers.any())).thenReturn("12345");
         Mockito.doReturn("/tmp/base.pbf").when(mapsService).ensureBasePbf();
     }
 

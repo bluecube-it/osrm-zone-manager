@@ -13,6 +13,10 @@ public enum GlobalOsrmStatus {
      */
     DISABLED,
     /**
+     * Registered at boot, waiting for its turn in the sequential build queue.
+     */
+    PENDING,
+    /**
      * The whole-map graph is being preprocessed ({@code osrm-extract/partition/customize}).
      */
     BUILDING,

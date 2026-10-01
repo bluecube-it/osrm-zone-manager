@@ -30,13 +30,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ProcessSupervisorService {
 
-    private static final int OSRM_HEALTH_TIMEOUT_SECONDS = 120;
     private static final int MAX_HEALTH_RETRIES = 3;
     private static final String FILE_OSRM_MAP_BASE = "map";
 
     private final OsrmZoneManagerConfig config;
     private final ZoneStateService zoneStateService;
     private final OsrmProcessLauncher launcher;
+    private final OsrmMapFingerprint mapFingerprint;
 
     private final Map<String, ProcessInfo> registry = new ConcurrentHashMap<>();
     private final Map<String, Object> zoneLocks = new ConcurrentHashMap<>();
@@ -60,6 +60,15 @@ public class ProcessSupervisorService {
         }
         if (osrmPort.get() == 0) {
             throw new IllegalStateException("zone " + zoneId + " has no port assigned");
+        }
+
+        Path zoneDir = Path.of(config.getZonesDir(), zoneId);
+        String pbfFingerprint = mapFingerprint.pbfFingerprint(Path.of(config.getBasePbf()));
+        if (!mapFingerprint.isUsable(zoneDir, pbfFingerprint)) {
+            log.warn("Zone {}: map artifacts are incomplete or stale (different OSRM version / base PBF) — rebuild required",
+                    zoneId);
+            markFailed(zoneId, "map artifacts missing or stale — rebuild required");
+            return;
         }
 
         ProcessInfo info = new ProcessInfo(zoneId, osrmPort.get());
@@ -143,7 +152,7 @@ public class ProcessSupervisorService {
             return;
         }
 
-        boolean ok = launcher.waitRouteHealth(info.osrmPort, OSRM_HEALTH_TIMEOUT_SECONDS);
+        boolean ok = launcher.waitRouteHealth(info.osrmPort, config.getOsrmStartTimeoutSeconds());
         info.healthy = ok;
         if (!ok) {
             log.error("Zone {}: osrm-routed timeout on port {}", info.zoneId, info.osrmPort);

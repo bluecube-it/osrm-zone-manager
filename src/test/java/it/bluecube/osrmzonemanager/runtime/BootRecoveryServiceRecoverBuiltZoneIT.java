@@ -47,11 +47,15 @@ class BootRecoveryServiceRecoverBuiltZoneIT extends BaseIT {
     @MockitoBean
     private MapsService mapsService;
 
+    @MockitoBean
+    private OsrmMapFingerprint mapFingerprint;
+
     @MockitoBean(name = "zoneManagerTaskExecutor")
     private Executor zoneManagerTaskExecutor;
 
     @BeforeEach
     void setUp() throws Exception {
+        Mockito.lenient().when(mapFingerprint.pbfFingerprint(ArgumentMatchers.any())).thenReturn("12345");
         Mockito.doReturn("/tmp/base.pbf").when(mapsService).ensureBasePbf();
         Mockito.when(buildPipelineService.buildZone(ArgumentMatchers.anyString(), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(CompletableFuture.completedFuture(new BuildResult("ignored", true, 5001, null)));
@@ -74,6 +78,7 @@ class BootRecoveryServiceRecoverBuiltZoneIT extends BaseIT {
                 .build();
         zoneRepository.save(zone);
 
+        Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(true);
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
         Mockito.verify(processSupervisorService).startZone(zoneId);
@@ -113,6 +118,7 @@ class BootRecoveryServiceRecoverBuiltZoneIT extends BaseIT {
                 .build();
         zoneRepository.save(zone);
 
+        Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(true);
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
         Mockito.verify(processSupervisorService).startZone(zoneId);

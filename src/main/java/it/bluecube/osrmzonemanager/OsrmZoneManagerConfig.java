@@ -132,6 +132,14 @@ public class OsrmZoneManagerConfig {
      */
     private int globalBuildTimeoutSeconds = 7_200;
 
+    /**
+     * Wall-clock budget, in seconds, for a zone {@code osrm-routed} to answer the route health probe.
+     *
+     * <p>On a heavily loaded machine (concurrent zone/whole-map builds) the default can be too tight;
+     * a start that exceeds it marks the zone {@code FAILED}.
+     */
+    private int osrmStartTimeoutSeconds = 120;
+
     public String getZonesDir() {
         return dataDir + "/zones";
     }

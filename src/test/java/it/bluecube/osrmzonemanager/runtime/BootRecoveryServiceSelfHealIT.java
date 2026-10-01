@@ -25,7 +25,11 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-class BootRecoveryServiceRecoverActiveZoneIT extends BaseIT {
+/**
+ * Self-heal behaviour of boot recovery: a zone marked {@code FAILED} must not stay a zombie — it is
+ * restarted when its map is still loadable, rebuilt when the map is stale or incomplete.
+ */
+class BootRecoveryServiceSelfHealIT extends BaseIT {
 
     @Autowired
     private BootRecoveryService bootRecoveryService;
@@ -67,19 +71,10 @@ class BootRecoveryServiceRecoverActiveZoneIT extends BaseIT {
     }
 
     @Test
-    void shouldStartActiveZoneWithMatchingHashAndMapFile() throws Exception {
-        String zoneId = "activematch12";
-        String polygonGeojson = objectMapper.writeValueAsString(TestBuilders.samplePolygon());
-        String polygonHash = HashUtils.sha256(polygonGeojson.getBytes());
-        createZoneFiles(zoneId, polygonGeojson);
-
-        ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
-                .zoneId(zoneId)
-                .status(ZoneStatus.ACTIVE.name())
-                .polygonHash(polygonHash)
-                .polygonGeojson(polygonGeojson)
-                .build();
-        zoneRepository.save(zone);
+    void shouldRestartFailedZoneWhoseMapIsStillLoadable() throws Exception {
+        String zoneId = "failedusable1";
+        createZoneDir(zoneId);
+        saveZone(zoneId, ZoneStatus.FAILED);
 
         Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(true);
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
@@ -90,17 +85,12 @@ class BootRecoveryServiceRecoverActiveZoneIT extends BaseIT {
     }
 
     @Test
-    void shouldRebuildActiveZoneWhenMapFileMissing() throws Exception {
-        String zoneId = "activemapmissing";
-        String polygonGeojson = objectMapper.writeValueAsString(TestBuilders.samplePolygon());
+    void shouldRebuildFailedZoneWhoseMapIsStale() throws Exception {
+        String zoneId = "failedstale1";
+        createZoneDir(zoneId);
+        saveZone(zoneId, ZoneStatus.FAILED);
 
-        ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
-                .zoneId(zoneId)
-                .status(ZoneStatus.ACTIVE.name())
-                .polygonGeojson(polygonGeojson)
-                .build();
-        zoneRepository.save(zone);
-
+        Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(false);
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
         Mockito.verify(buildPipelineService).buildZone(ArgumentMatchers.eq(zoneId),
@@ -109,31 +99,35 @@ class BootRecoveryServiceRecoverActiveZoneIT extends BaseIT {
     }
 
     @Test
-    void shouldRebuildDegradedZoneWhenPolygonHashMismatched() throws Exception {
-        String zoneId = "degradedmismatch";
-        String polygonGeojson = objectMapper.writeValueAsString(TestBuilders.samplePolygon());
-        createZoneFiles(zoneId, polygonGeojson + "different");
+    void shouldRebuildActiveZoneWhenOsrmVersionChanged() throws Exception {
+        String zoneId = "activebumped1";
+        createZoneDir(zoneId);
+        saveZone(zoneId, ZoneStatus.ACTIVE);
 
-        ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
-                .zoneId(zoneId)
-                .status(ZoneStatus.DEGRADED.name())
-                .polygonHash(HashUtils.sha256(polygonGeojson.getBytes()))
-                .polygonGeojson(polygonGeojson)
-                .build();
-        zoneRepository.save(zone);
-
-        Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(true);
+        // map complete and polygon unchanged, but produced by a different OSRM version
+        Mockito.when(mapFingerprint.isUsable(ArgumentMatchers.any(), ArgumentMatchers.anyString())).thenReturn(false);
         ReflectionTestUtils.invokeMethod(bootRecoveryService, "recover");
 
         Mockito.verify(buildPipelineService).buildZone(ArgumentMatchers.eq(zoneId),
                 ArgumentMatchers.any(), ArgumentMatchers.isNull());
-        Mockito.verify(processSupervisorService).startZone(zoneId);
     }
 
-    private void createZoneFiles(String zoneId, String polygonGeojson) throws Exception {
+    private void saveZone(String zoneId, ZoneStatus status) throws Exception {
+        String polygonGeojson = objectMapper.writeValueAsString(TestBuilders.samplePolygon());
+        ZoneEntity zone = TestBuilders.fullyPopulatedZoneEntity()
+                .zoneId(zoneId)
+                .status(status.name())
+                .polygonHash(HashUtils.sha256(polygonGeojson.getBytes()))
+                .polygonGeojson(polygonGeojson)
+                .build();
+        zoneRepository.save(zone);
+    }
+
+    private void createZoneDir(String zoneId) throws Exception {
         Path zoneDir = Path.of(config.getZonesDir(), zoneId);
         Files.createDirectories(zoneDir);
-        Files.writeString(zoneDir.resolve(ZoneFiles.POLYGON_GEOJSON), polygonGeojson);
+        Files.writeString(zoneDir.resolve(ZoneFiles.POLYGON_GEOJSON),
+                objectMapper.writeValueAsString(TestBuilders.samplePolygon()));
         Files.writeString(zoneDir.resolve(ZoneFiles.MAP_OSRM_PROPERTIES), "");
     }
 }

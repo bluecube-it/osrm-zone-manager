@@ -3,6 +3,7 @@ package it.bluecube.osrmzonemanager.global;
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import it.bluecube.osrmzonemanager.builder.OsrmCommandRunner;
 import it.bluecube.osrmzonemanager.maps.MapsService;
+import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
 import it.bluecube.osrmzonemanager.runtime.OsrmProcessLauncher;
 import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
 import it.bluecube.osrmzonemanager.zone.ZoneProfile;
@@ -44,8 +45,6 @@ public class GlobalOsrmService implements ApplicationRunner {
     private static final int OSRM_HEALTH_TIMEOUT_SECONDS = 600;
     private static final int MAX_HEALTH_RETRIES = 3;
     private static final String FILE_OSRM_MAP_BASE = "map";
-    private static final String FILE_OSRM_MAP_PROPERTIES = "map.osrm.properties";
-    private static final String FILE_BASE_PBF_MTIME = "base-pbf.mtime";
     private static final String FLAG_EXTRACT = "-p";
     private static final String FLAG_OUTPUT = "-o";
     private static final String BINARY_OSRM_EXTRACT = "osrm-extract";
@@ -57,6 +56,7 @@ public class GlobalOsrmService implements ApplicationRunner {
     private final MapsService mapsService;
     private final OsrmCommandRunner commandRunner;
     private final OsrmProcessLauncher launcher;
+    private final OsrmMapFingerprint mapFingerprint;
     private final PortAllocatorService portAllocator;
     private final GlobalOsrmRegistry registry;
     private final Executor zoneManagerTaskExecutor;
@@ -81,7 +81,8 @@ public class GlobalOsrmService implements ApplicationRunner {
 
     /**
      * Builds (when needed) and starts one instance per profile, sequentially — whole-map
-     * preprocessing is memory-hungry, so profiles are not built in parallel.
+     * preprocessing is memory-hungry, so profiles are not built in parallel. Every profile is
+     * registered up-front as {@link GlobalOsrmStatus#PENDING} so {@code GET /osrm} lists a stable set.
      */
     void startAll() {
         Path basePbf;
@@ -91,19 +92,28 @@ public class GlobalOsrmService implements ApplicationRunner {
             log.error("Global OSRM: base PBF unavailable, skipping global instances: {}", e.getMessage());
             return;
         }
+        String pbfFingerprint = mapFingerprint.pbfFingerprint(basePbf);
 
         for (ZoneProfile profile : ZoneProfile.values()) {
-            startProfile(profile, basePbf);
+            GlobalOsrmInstance instance = new GlobalOsrmInstance(profile);
+            instance.status = GlobalOsrmStatus.PENDING;
+            registry.register(instance);
+        }
+        for (ZoneProfile profile : ZoneProfile.values()) {
+            startProfile(profile, basePbf, pbfFingerprint);
         }
     }
 
-    private void startProfile(ZoneProfile profile, Path basePbf) {
-        GlobalOsrmInstance instance = new GlobalOsrmInstance(profile);
-        registry.register(instance);
+    private void startProfile(ZoneProfile profile, Path basePbf, String pbfFingerprint) {
+        GlobalOsrmInstance instance = registry.find(profile).orElseGet(() -> {
+            GlobalOsrmInstance created = new GlobalOsrmInstance(profile);
+            registry.register(created);
+            return created;
+        });
         Path dir = Path.of(config.getGlobalProfileDir(profile));
         try {
             Files.createDirectories(dir);
-            ensureMap(dir, profile, basePbf, instance);
+            ensureMap(dir, profile, basePbf, pbfFingerprint, instance);
             startProcess(instance, dir);
         } catch (Exception e) {
             log.error("Global OSRM {}: startup failed", profile.name(), e);
@@ -112,16 +122,19 @@ public class GlobalOsrmService implements ApplicationRunner {
     }
 
     /**
-     * Builds the whole-map graph for a profile when the artifacts are missing or stale.
+     * Builds the whole-map graph for a profile when the artifacts are missing or stale (different
+     * OSRM version or replaced base PBF).
      *
-     * @param dir      profile graph directory
-     * @param profile  routing profile
-     * @param basePbf  whole-map source PBF
-     * @param instance tracking state, updated with the {@link GlobalOsrmStatus#BUILDING} status
+     * @param dir             profile graph directory
+     * @param profile         routing profile
+     * @param basePbf         whole-map source PBF
+     * @param pbfFingerprint  identity of the base PBF
+     * @param instance        tracking state, updated with the {@link GlobalOsrmStatus#BUILDING} status
      * @throws IOException on graph directory/file access failure
      */
-    private void ensureMap(Path dir, ZoneProfile profile, Path basePbf, GlobalOsrmInstance instance) throws IOException {
-        if (isMapUpToDate(dir, basePbf)) {
+    private void ensureMap(Path dir, ZoneProfile profile, Path basePbf, String pbfFingerprint,
+                           GlobalOsrmInstance instance) throws IOException {
+        if (mapFingerprint.isUsable(dir, pbfFingerprint)) {
             log.info("Global OSRM {}: graph already up to date in {}", profile.name(), dir);
             return;
         }
@@ -139,7 +152,7 @@ public class GlobalOsrmService implements ApplicationRunner {
         ), dir.toFile(), timeout);
         commandRunner.run(List.of(BINARY_OSRM_PARTITION, MAP_OSRM), dir.toFile(), timeout);
         commandRunner.run(List.of(BINARY_OSRM_CUSTOMIZE, MAP_OSRM), dir.toFile(), timeout);
-        writeBasePbfMtime(dir, basePbf);
+        mapFingerprint.write(dir, pbfFingerprint);
         log.info("Global OSRM {}: whole-map graph built", profile.name());
     }
 
@@ -220,7 +233,7 @@ public class GlobalOsrmService implements ApplicationRunner {
     }
 
     private void checkOne(GlobalOsrmInstance instance) {
-        if (instance.port == null || instance.status == GlobalOsrmStatus.BUILDING) {
+        if (instance.port == null || isWholeMapBuildInProgress(instance)) {
             return;
         }
         if (launcher.ping(instance.port)) {
@@ -266,30 +279,8 @@ public class GlobalOsrmService implements ApplicationRunner {
         }
     }
 
-    private boolean isMapUpToDate(Path dir, Path basePbf) {
-        Path properties = dir.resolve(FILE_OSRM_MAP_PROPERTIES);
-        Path marker = dir.resolve(FILE_BASE_PBF_MTIME);
-        if (!Files.exists(properties) || !Files.exists(marker)) {
-            return false;
-        }
-        try {
-            return Files.readString(marker).trim().equals(basePbfMtime(basePbf));
-        } catch (Exception e) {
-            log.warn("Global OSRM: could not read {}: {}", marker, e.getMessage());
-            return false;
-        }
-    }
-
-    private void writeBasePbfMtime(Path dir, Path basePbf) throws IOException {
-        Files.writeString(dir.resolve(FILE_BASE_PBF_MTIME), basePbfMtime(basePbf));
-    }
-
-    private String basePbfMtime(Path basePbf) {
-        try {
-            return String.valueOf(Files.getLastModifiedTime(basePbf).toMillis());
-        } catch (IOException e) {
-            return "unknown";
-        }
+    private boolean isWholeMapBuildInProgress(GlobalOsrmInstance instance) {
+        return instance.status == GlobalOsrmStatus.BUILDING || instance.status == GlobalOsrmStatus.PENDING;
     }
 
     private void fail(GlobalOsrmInstance instance, String error) {

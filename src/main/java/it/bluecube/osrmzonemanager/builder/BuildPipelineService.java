@@ -1,6 +1,7 @@
 package it.bluecube.osrmzonemanager.builder;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
+import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
 import it.bluecube.osrmzonemanager.zone.ZoneFiles;
 import it.bluecube.osrmzonemanager.zone.ZoneProfile;
 import it.bluecube.osrmzonemanager.zone.ZoneStateService;
@@ -52,6 +53,7 @@ public class BuildPipelineService {
     private final ZoneStateService zoneStateService;
     private final ObjectMapper objectMapper;
     private final OsrmCommandRunner commandRunner;
+    private final OsrmMapFingerprint mapFingerprint;
     private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
 
     /**
@@ -90,6 +92,7 @@ public class BuildPipelineService {
             Path regionPbf = extractRegionPbf(zoneDir, inputs.polygonPath());
             buildCombinedPbf(zoneDir, regionPbf, inputs.lineStringsPath());
             buildOsrmMap(zoneDir, profile);
+            mapFingerprint.write(zoneDir, mapFingerprint.pbfFingerprint(Path.of(config.getBasePbf())));
             cleanTempPBFs(zoneDir);
             zoneStateService.markZoneBuilt(zoneId);
             log.info("Zone {}: build complete", zoneId);

@@ -24,12 +24,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
 /**
- * On-boot zone recovery: scans the persistent zone registry and brings every
- * zone back online — either by restarting the OSRM process or by scheduling
- * a full rebuild when artifacts are missing or stale.
+ * On-boot zone recovery: scans the persistent zone registry and brings every zone back online — by
+ * starting its OSRM process when the preprocessed map is still loadable, or by rebuilding it.
  *
- * <p>Recovery runs asynchronously on {@code zoneManagerTaskExecutor} so that
- * PBF warm-up and per-zone rebuilds do not block application startup.
+ * <p>A map is only considered loadable when it is complete <em>and</em> was produced by the OSRM
+ * version installed in the running image ({@link OsrmMapFingerprint}); OSRM refuses to load a graph
+ * built by another release, which otherwise leaves the zone permanently {@code FAILED}. Zones in
+ * {@code FAILED} are recovered too (self-heal) rather than skipped, since the failure may simply have
+ * been a stale map or a resource-starved build.
+ *
+ * <p>Recovery runs asynchronously on {@code zoneManagerTaskExecutor} so that PBF warm-up and
+ * per-zone rebuilds do not block application startup.
  */
 @Slf4j
 @Service
@@ -40,6 +45,7 @@ public class BootRecoveryService implements ApplicationRunner {
     private final ZoneStateService zoneStateService;
     private final BuildPipelineService buildPipelineService;
     private final ProcessSupervisorService processSupervisor;
+    private final OsrmMapFingerprint mapFingerprint;
     private final OsrmZoneManagerConfig config;
     private final ObjectMapper objectMapper;
     private final Executor zoneManagerTaskExecutor;
@@ -61,12 +67,14 @@ public class BootRecoveryService implements ApplicationRunner {
      */
     private void recover() {
         log.info("Boot: osrm-zone-manager starting recovery");
+        Path basePbf;
         try {
-            pbfDownloadService.ensureBasePbf();
+            basePbf = Path.of(pbfDownloadService.ensureBasePbf());
         } catch (Exception e) {
             log.error("Boot: base PBF check failed: {}", e.getMessage());
             return;
         }
+        String pbfFingerprint = mapFingerprint.pbfFingerprint(basePbf);
 
         List<ZoneRecoveryDTO> zones = zoneStateService.findAllRecoveryData();
         if (zones.isEmpty()) {
@@ -77,7 +85,7 @@ public class BootRecoveryService implements ApplicationRunner {
 
         for (ZoneRecoveryDTO zone : zones) {
             try {
-                recoverZone(zone);
+                recoverZone(zone, pbfFingerprint);
             } catch (Exception e) {
                 log.error("Boot recovery: zone {} failed: {}", zone.zoneId(), e.getMessage());
             }
@@ -85,12 +93,15 @@ public class BootRecoveryService implements ApplicationRunner {
     }
 
     /**
-     * Dispatches a zone to the correct recovery path based on its persisted status.
-     * Unknown or non-actionable statuses (FAILED) are skipped with a warning.
+     * Starts the zone when its map is still loadable, otherwise rebuilds it from the stored polygon.
      *
-     * @param zone the recovery data for the zone
+     * <p>Unknown statuses are skipped (nothing sensible can be decided for them), every other status is
+     * recovered — including {@code FAILED}, which used to be terminal and left zombie zones behind.
+     *
+     * @param zone           the recovery data for the zone
+     * @param pbfFingerprint identity of the base PBF currently mounted
      */
-    private void recoverZone(ZoneRecoveryDTO zone) {
+    private void recoverZone(ZoneRecoveryDTO zone, String pbfFingerprint) {
         String zoneId = zone.zoneId();
         ZoneStatus status = ZoneStatus.parseSafe(zone.status());
         if (status == null) {
@@ -98,43 +109,18 @@ public class BootRecoveryService implements ApplicationRunner {
             return;
         }
 
-        switch (status) {
-            case BUILDING -> rebuild(zone);
-            case ACTIVE, DEGRADED -> recoverLiveZone(zone);
-            case BUILT, STARTING -> recoverPendingZone(zone);
-            default -> log.warn("Boot recovery: zone {} status='{}' — skipping", zoneId, status);
-        }
-    }
-
-    /**
-     * Attempts to restart a live (ACTIVE/DEGRADED) zone whose on-disk polygon
-     * still matches the registry hash. Falls back to a full rebuild if the
-     * map file is missing or the polygon changed.
-     *
-     * @param zone the recovery data for the zone
-     */
-    private void recoverLiveZone(ZoneRecoveryDTO zone) {
-        String zoneId = zone.zoneId();
-        if (mapFileExists(zoneId) && polygonHashMatches(zone)) {
+        Path zoneDir = Path.of(config.getZonesDir(), zoneId);
+        // for a live zone the on-disk polygon must still match the registry, otherwise the map no
+        // longer describes the requested area and has to be rebuilt
+        boolean polygonOk = !status.isLive() || polygonHashMatches(zone);
+        if (mapFingerprint.isUsable(zoneDir, pbfFingerprint) && polygonOk) {
+            log.info("Boot recovery: zone {} status={} map is loadable — starting", zoneId, status);
             processSupervisor.startZone(zoneId);
-        } else {
-            rebuild(zone);
+            return;
         }
-    }
 
-    /**
-     * Attempts to start a zone that was BUILT but never started (or was STARTING).
-     * Falls back to a full rebuild if the map file is missing.
-     *
-     * @param zone the recovery data for the zone
-     */
-    private void recoverPendingZone(ZoneRecoveryDTO zone) {
-        String zoneId = zone.zoneId();
-        if (mapFileExists(zoneId)) {
-            processSupervisor.startZone(zoneId);
-        } else {
-            rebuild(zone);
-        }
+        log.info("Boot recovery: zone {} status={} map is missing or stale — rebuilding", zoneId, status);
+        rebuild(zone);
     }
 
     /**
@@ -186,17 +172,6 @@ public class BootRecoveryService implements ApplicationRunner {
             log.warn("Boot recovery: hash check failed for zone {}: {}", zone.zoneId(), e.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Checks whether the OSRM map file exists for the given zone.
-     *
-     * @param zoneId the zone identifier
-     * @return {@code true} if the map file is present on disk
-     */
-    private boolean mapFileExists(String zoneId) {
-        Path mapFile = Path.of(config.getZonesDir(), zoneId, ZoneFiles.MAP_OSRM_PROPERTIES);
-        return Files.exists(mapFile);
     }
 
     /**

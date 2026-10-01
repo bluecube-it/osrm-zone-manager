@@ -3,6 +3,7 @@ package it.bluecube.osrmzonemanager.global;
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
 import it.bluecube.osrmzonemanager.builder.OsrmCommandRunner;
 import it.bluecube.osrmzonemanager.maps.MapsService;
+import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
 import it.bluecube.osrmzonemanager.runtime.OsrmProcessLauncher;
 import it.bluecube.osrmzonemanager.runtime.PortAllocatorService;
 import it.bluecube.osrmzonemanager.zone.ZoneProfile;
@@ -19,6 +20,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,9 +28,6 @@ import java.util.function.Consumer;
 
 class GlobalOsrmServiceTest extends BaseUnitTest {
 
-    private final GlobalOsrmRegistry registry = new GlobalOsrmRegistry();
-    private final Executor executor = Runnable::run;
-    private final AtomicInteger portSequence = new AtomicInteger(5000);
     @Mock
     private OsrmZoneManagerConfig config;
     @Mock
@@ -39,6 +38,12 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
     private OsrmProcessLauncher launcher;
     @Mock
     private PortAllocatorService portAllocator;
+
+    private final GlobalOsrmRegistry registry = new GlobalOsrmRegistry();
+    private final OsrmMapFingerprint mapFingerprint = new OsrmMapFingerprint();
+    private final Executor executor = Runnable::run;
+    private final AtomicInteger portSequence = new AtomicInteger(5000);
+
     private Path globalDir;
     private Path basePbf;
     private GlobalOsrmService service;
@@ -67,7 +72,8 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
         Mockito.lenient().when(launcher.waitRouteHealth(ArgumentMatchers.anyInt(), ArgumentMatchers.anyInt()))
                 .thenReturn(true);
 
-        service = new GlobalOsrmService(config, mapsService, commandRunner, launcher, portAllocator, registry, executor);
+        service = new GlobalOsrmService(config, mapsService, commandRunner, launcher, mapFingerprint,
+                portAllocator, registry, executor);
     }
 
     @Test
@@ -87,18 +93,31 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
         Assertions.assertThat(commands.get(2)).containsExactly("osrm-customize", "map.osrm");
         Assertions.assertThat(commands.get(5)).containsExactly("osrm-customize", "map.osrm");
         Assertions.assertThat(commands.get(3).get(2)).isEqualTo("/opt/bus.lua");
-        Assertions.assertThat(globalDir.resolve("car/base-pbf.mtime")).exists();
+        Assertions.assertThat(globalDir.resolve("car").resolve(OsrmMapFingerprint.MARKER_FILE)).exists();
+    }
+
+    @Test
+    void shouldRegisterEveryProfileAsPendingBeforeBuilding() throws Exception {
+        List<String> statusesWhenFirstBuildStarts = new ArrayList<>();
+        Mockito.doAnswer(invocation -> {
+            if (statusesWhenFirstBuildStarts.isEmpty()) {
+                statusesWhenFirstBuildStarts.add(service.statusOf(ZoneProfile.CAR).name());
+                statusesWhenFirstBuildStarts.add(service.statusOf(ZoneProfile.BUS).name());
+            }
+            return null;
+        }).when(commandRunner).run(ArgumentMatchers.anyList(), ArgumentMatchers.any(File.class),
+                ArgumentMatchers.anyInt());
+
+        service.startAll();
+
+        Assertions.assertThat(statusesWhenFirstBuildStarts)
+                .containsExactly(GlobalOsrmStatus.BUILDING.name(), GlobalOsrmStatus.PENDING.name());
     }
 
     @Test
     void shouldSkipBuildWhenGraphIsUpToDate() throws Exception {
-        for (ZoneProfile profile : ZoneProfile.values()) {
-            Path dir = globalDir.resolve(profile.name().toLowerCase());
-            Files.createDirectories(dir);
-            Files.createFile(dir.resolve("map.osrm.properties"));
-            Files.writeString(dir.resolve("base-pbf.mtime"),
-                    String.valueOf(Files.getLastModifiedTime(basePbf).toMillis()));
-        }
+        writeUpToDateGraph(ZoneProfile.CAR);
+        writeUpToDateGraph(ZoneProfile.BUS);
 
         service.startAll();
 
@@ -108,12 +127,12 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
     }
 
     @Test
-    void shouldRebuildWhenBasePbfChanged() throws Exception {
+    void shouldRebuildWhenMapWasBuiltByAnotherOsrmVersion() throws Exception {
+        writeUpToDateGraph(ZoneProfile.CAR);
+        writeUpToDateGraph(ZoneProfile.BUS);
         for (ZoneProfile profile : ZoneProfile.values()) {
-            Path dir = globalDir.resolve(profile.name().toLowerCase());
-            Files.createDirectories(dir);
-            Files.createFile(dir.resolve("map.osrm.properties"));
-            Files.writeString(dir.resolve("base-pbf.mtime"), "1");
+            Path marker = globalDir.resolve(profile.name().toLowerCase()).resolve(OsrmMapFingerprint.MARKER_FILE);
+            Files.writeString(marker, Files.readString(marker).replaceFirst("osrm-version=.*", "osrm-version=osrm-extract 26.4"));
         }
 
         service.startAll();
@@ -134,7 +153,7 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
     }
 
     @Test
-    void shouldReportFailedWhenStartupTimesOut() {
+    void shouldReportFailedWhenStartupTimesOut() throws Exception {
         Mockito.when(launcher.waitRouteHealth(ArgumentMatchers.anyInt(), ArgumentMatchers.anyInt()))
                 .thenReturn(false);
 
@@ -158,7 +177,7 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
     }
 
     @Test
-    void shouldMarkDegradedAfterRepeatedUnhealthyChecks() {
+    void shouldMarkDegradedAfterRepeatedUnhealthyChecks() throws Exception {
         service.startAll();
         Mockito.when(launcher.ping(ArgumentMatchers.anyInt())).thenReturn(false);
         Mockito.when(launcher.waitRouteHealth(ArgumentMatchers.anyInt(), ArgumentMatchers.anyInt()))
@@ -180,6 +199,15 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
 
         Mockito.verify(launcher, Mockito.atLeast(2))
                 .kill(ArgumentMatchers.any(), ArgumentMatchers.startsWith("global-osrm-"));
+    }
+
+    private void writeUpToDateGraph(ZoneProfile profile) throws Exception {
+        Path dir = globalDir.resolve(profile.name().toLowerCase());
+        Files.createDirectories(dir);
+        for (String file : OsrmMapFingerprint.REQUIRED_MAP_FILES) {
+            Files.createFile(dir.resolve(file));
+        }
+        mapFingerprint.write(dir, mapFingerprint.pbfFingerprint(basePbf));
     }
 
     private List<List<String>> capturedCommands() throws Exception {

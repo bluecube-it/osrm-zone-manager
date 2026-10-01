@@ -1,0 +1,5 @@
+# Applied Flyway migrations must stay byte-identical: Flyway validates a checksum of the migration
+# file content against the database history. Never let a checkout or editor rewrite line endings —
+# CRLF drift already caused a "Migration checksum mismatch" boot failure once.
+src/main/resources/db/migration/*.sql text eol=lf
+*.sh text eol=lf

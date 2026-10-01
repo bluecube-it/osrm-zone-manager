@@ -182,4 +182,41 @@ code="$(api "$base/osrm")"
 grep -q '"profile":"CAR","status":"READY"' /tmp/ozm-response.json \
   || fail "global CAR stopped being READY: $(cat /tmp/ozm-response.json)"
 
+echo "== map fingerprints written for zones and globals"
+for dir in /data/global/car /data/global/bus "/data/zones/${zone_id}"; do
+  docker exec "$APP_CONTAINER" test -f "${dir}/map.fingerprint" \
+    || fail "missing ${dir}/map.fingerprint"
+done
+docker exec "$APP_CONTAINER" cat /data/global/car/map.fingerprint
+docker exec "$APP_CONTAINER" cat "/data/zones/${zone_id}/map.fingerprint"
+
+echo "== restart: maps must be reused, zone restored, nothing rebuilt"
+docker stop "$APP_CONTAINER" >/dev/null
+docker start "$APP_CONTAINER" >/dev/null
+until [ "$(api "$base/actuator/health")" = "200" ] \
+  && [ "$(api "$base/osrm")" = "200" ] \
+  && grep -q '"profile":"CAR","status":"READY"' /tmp/ozm-response.json \
+  && grep -q '"profile":"BUS","status":"READY"' /tmp/ozm-response.json; do
+  [ "$SECONDS" -lt "$deadline" ] || fail "globals not READY after restart: $(cat /tmp/ozm-response.json)"
+  sleep 2
+done
+# note: capture the log first — `docker logs | grep -q` would make docker die on SIGPIPE and
+# trip `set -o pipefail`
+docker logs "$APP_CONTAINER" > "$workdir/app-restart.log" 2>&1 || true
+grep -q "graph already up to date" "$workdir/app-restart.log" \
+  || fail "global graphs were rebuilt after restart instead of reused"
+grep -q "map is loadable — starting" "$workdir/app-restart.log" \
+  || fail "zone was not restored from its existing map after restart"
+if grep -q "rebuilding" "$workdir/app-restart.log"; then
+  fail "something was rebuilt after restart (fingerprint mismatch?)"
+fi
+
+code="$(api "$base/osrm/car/$route")"
+[ "$code" = "200" ] || fail "global route after restart -> HTTP $code"
+grep -q '"code":"Ok"' /tmp/ozm-response.json || fail "global route after restart not Ok"
+code="$(api "$base/${zone_id}/osrm/${route}")"
+[ "$code" = "200" ] || fail "zone route after restart -> HTTP $code"
+grep -q '"code":"Ok"' /tmp/ozm-response.json || fail "zone route after restart not Ok"
+echo "restart reuse ok"
+
 echo "GLOBAL OSRM E2E TEST OK"
