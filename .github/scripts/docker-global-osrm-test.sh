@@ -34,15 +34,26 @@ fail() {
   exit 1
 }
 
+# Removes the workdir. The app runs as the caller's uid so its artifacts are removable directly;
+# if anything is still root-owned (e.g. an older image running as root), fall back to deleting
+# inside a throw-away container.
+remove_workdir() {
+  [ -d "$workdir" ] || return 0
+  rm -rf "$workdir" 2>/dev/null && return 0
+  docker run --rm -v "$workdir:/work" --entrypoint sh "$IMAGE" -c 'rm -rf /work/* 2>/dev/null || true' \
+    >/dev/null 2>&1 || true
+  rm -rf "$workdir" 2>/dev/null || true
+}
+
 cleanup() {
   docker rm -f "$APP_CONTAINER" "$DB_CONTAINER" >/dev/null 2>&1 || true
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
-  rm -rf "$workdir"
+  remove_workdir
 }
 trap cleanup EXIT
 
 api() {
-  curl -sS -o /tmp/ozm-response.json -w '%{http_code}' "$@"
+  curl -s -o /tmp/ozm-response.json -w '%{http_code}' "$@"
 }
 
 echo "== tiny map"
@@ -89,6 +100,7 @@ docker exec "$DB_CONTAINER" pg_isready -U osrm -d osrm_zone_manager >/dev/null 2
 
 echo "== app with global profiles enabled"
 docker run -d --name "$APP_CONTAINER" --network "$NETWORK" -p "${APP_PORT}:8080" \
+  --user "$(id -u):$(id -g)" \
   -v "$workdir/data:/data" \
   -e SPRING_DATASOURCE_URL="jdbc:postgresql://${DB_CONTAINER}:5432/osrm_zone_manager" \
   -e SPRING_DATASOURCE_USERNAME=osrm \
