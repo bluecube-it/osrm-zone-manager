@@ -19,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 
 class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
 
@@ -50,27 +49,26 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
 
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).contains("not found in registry");
-        verifyNoSemaphoreAcquire(target);
+        verifyBuildSlotNotTaken(target);
     }
 
     @Test
     void shouldAcquireAndReleaseBuildSlotOnCompletion() throws Exception {
         BuildPipelineService target = buildService();
-        Semaphore semaphore = Mockito.spy(new Semaphore(1));
-        ReflectionTestUtils.setField(target, "buildSlots", semaphore);
+        BuildSerializer serializer = Mockito.spy(new BuildSerializer());
+        ReflectionTestUtils.setField(target, "buildSerializer", serializer);
         Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
 
         Assertions.assertThat(result.ok()).isTrue();
-        Mockito.verify(semaphore).acquire();
-        Mockito.verify(semaphore).release();
+        Mockito.verify(serializer).acquireZone();
+        Mockito.verify(serializer).release();
     }
 
     @Test
     void shouldMarkZoneBuiltOnSuccess() throws Exception {
         BuildPipelineService target = buildService();
-        ReflectionTestUtils.setField(target, "buildSlots", new Semaphore(1));
         Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
@@ -82,14 +80,14 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
     @Test
     void shouldMarkZoneFailedAndReleasePortsOnException() throws Exception {
         BuildPipelineService target = new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config),
-                new OsrmMapFingerprint()) {
+                new OsrmMapFingerprint(), new BuildSerializer()) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) {
                 throw new BuildException("boom");
             }
         };
-        Semaphore semaphore = Mockito.spy(new Semaphore(1));
-        ReflectionTestUtils.setField(target, "buildSlots", semaphore);
+        BuildSerializer serializer = Mockito.spy(new BuildSerializer());
+        ReflectionTestUtils.setField(target, "buildSerializer", serializer);
         Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
@@ -97,15 +95,15 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).contains("boom");
         Mockito.verify(zoneStateService).markZoneFailed("zone", "boom");
-        Mockito.verify(semaphore).release();
+        Mockito.verify(serializer).release();
     }
 
     @Test
     void shouldReturnInterruptedResultWhenSlotAcquireInterrupted() throws Exception {
         BuildPipelineService target = buildService();
-        Semaphore semaphore = Mockito.mock(Semaphore.class);
-        Mockito.doThrow(new InterruptedException()).when(semaphore).acquire();
-        ReflectionTestUtils.setField(target, "buildSlots", semaphore);
+        BuildSerializer serializer = Mockito.mock(BuildSerializer.class);
+        Mockito.doThrow(new InterruptedException()).when(serializer).acquireZone();
+        ReflectionTestUtils.setField(target, "buildSerializer", serializer);
         Mockito.when(zoneStateService.findOsrmPort("zone")).thenReturn(Optional.of(5001));
 
         BuildResult result = target.buildZone("zone", TestBuilders.samplePolygon(), null).get();
@@ -113,11 +111,12 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         Assertions.assertThat(result.ok()).isFalse();
         Assertions.assertThat(result.error()).containsIgnoringCase("interrupted");
         Mockito.verify(zoneStateService, Mockito.never()).markZoneBuilt(Mockito.anyString());
+        Mockito.verify(serializer, Mockito.never()).release();
     }
 
     private BuildPipelineService buildService() {
         return new BuildPipelineService(config, zoneStateService, objectMapper, new OsrmCommandRunner(config),
-                new OsrmMapFingerprint()) {
+                new OsrmMapFingerprint(), new BuildSerializer()) {
             @Override
             protected void runSubprocess(List<String> command, File cwd) throws IOException {
                 if ("osmium".equals(command.get(0)) && "extract".equals(command.get(1))) {
@@ -134,9 +133,8 @@ class BuildPipelineServiceBuildZoneTest extends BaseUnitTest {
         };
     }
 
-    private void verifyNoSemaphoreAcquire(BuildPipelineService target) {
-        Semaphore semaphore = (Semaphore) ReflectionTestUtils.getField(target, "buildSlots");
-        // default initial permits = MAX_CONCURRENT_BUILDS; no acquire/release happened
-        Assertions.assertThat(semaphore.availablePermits()).isEqualTo(3);
+    private void verifyBuildSlotNotTaken(BuildPipelineService target) {
+        BuildSerializer serializer = (BuildSerializer) ReflectionTestUtils.getField(target, "buildSerializer");
+        Assertions.assertThat(serializer.isBusy()).isFalse();
     }
 }

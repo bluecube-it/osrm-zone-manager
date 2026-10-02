@@ -24,7 +24,6 @@ import tools.jackson.databind.JsonNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 
 class BuildPipelineServiceBuildZoneFailureIT extends BaseIT {
 
@@ -100,7 +99,7 @@ class BuildPipelineServiceBuildZoneFailureIT extends BaseIT {
         Assertions.assertThat(updated.get().getError()).contains("subprocess boom");
 
 
-        Semaphore semaphore = (Semaphore) ReflectionTestUtils.getField(spyBuildPipelineService, "buildSlots");
-        Assertions.assertThat(semaphore.availablePermits()).isEqualTo(3);
+        BuildSerializer serializer = (BuildSerializer) ReflectionTestUtils.getField(spyBuildPipelineService, "buildSerializer");
+        Assertions.assertThat(serializer.isBusy()).isFalse();
     }
 }

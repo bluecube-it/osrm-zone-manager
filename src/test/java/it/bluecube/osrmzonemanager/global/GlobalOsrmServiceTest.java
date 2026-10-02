@@ -1,6 +1,7 @@
 package it.bluecube.osrmzonemanager.global;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
+import it.bluecube.osrmzonemanager.builder.BuildSerializer;
 import it.bluecube.osrmzonemanager.builder.OsrmCommandRunner;
 import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
@@ -72,8 +73,8 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
         Mockito.lenient().when(launcher.waitRouteHealth(ArgumentMatchers.anyInt(), ArgumentMatchers.anyInt()))
                 .thenReturn(true);
 
-        service = new GlobalOsrmService(config, mapsService, commandRunner, launcher, mapFingerprint,
-                portAllocator, registry, executor);
+        service = new GlobalOsrmService(config, mapsService, commandRunner, new BuildSerializer(), launcher,
+                mapFingerprint, portAllocator, registry, executor);
     }
 
     @Test

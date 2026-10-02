@@ -21,11 +21,13 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Semaphore;
 
 /**
  * Orchestrates the build pipeline for a single OSRM zone.
  * Pipeline stages: osmium extract → (reduce.py merge) → osrm-extract → osrm-partition → osrm-customize.
+ *
+ * <p>Builds are serialized against every other build (including the whole-map global ones) through
+ * {@link BuildSerializer}, and wait for the single shared slot before touching the filesystem.
  */
 @Slf4j
 @Service
@@ -33,7 +35,6 @@ import java.util.concurrent.Semaphore;
 public class BuildPipelineService {
 
     private static final int SUBPROCESS_TIMEOUT_SECONDS = 600;
-    private static final int MAX_CONCURRENT_BUILDS = 3;
     private static final String FILE_REGION_PBF = "region.osm.pbf";
     private static final String FILE_CUSTOM_WAYS_PBF = "custom_ways.pbf";
     private static final String FILE_COMBINED_PBF = "combined.osm.pbf";
@@ -54,7 +55,7 @@ public class BuildPipelineService {
     private final ObjectMapper objectMapper;
     private final OsrmCommandRunner commandRunner;
     private final OsrmMapFingerprint mapFingerprint;
-    private Semaphore buildSlots = new Semaphore(MAX_CONCURRENT_BUILDS, true);
+    private final BuildSerializer buildSerializer;
 
     /**
      * Initiates the async build pipeline for a zone.
@@ -79,7 +80,7 @@ public class BuildPipelineService {
         Path zoneDir = Path.of(zoneDirPath);
 
         try {
-            buildSlots.acquire();
+            buildSerializer.acquireZone();
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             return CompletableFuture.completedFuture(
@@ -104,7 +105,7 @@ public class BuildPipelineService {
             return CompletableFuture.completedFuture(
                     new BuildResult(zoneId, false, osrmPort, e.getMessage()));
         } finally {
-            buildSlots.release();
+            buildSerializer.release();
         }
     }
 

@@ -13,7 +13,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 
-import java.util.concurrent.Semaphore;
 
 class BuildPipelineServiceBuildZoneNotFoundIT extends BaseIT {
 
@@ -42,7 +41,7 @@ class BuildPipelineServiceBuildZoneNotFoundIT extends BaseIT {
         Mockito.verify(spyBuildPipelineService, Mockito.never()).runSubprocess(Mockito.any(), Mockito.any());
         Mockito.verify(processSupervisorService, Mockito.never()).startZone(Mockito.any());
 
-        Semaphore semaphore = (Semaphore) ReflectionTestUtils.getField(buildPipelineService, "buildSlots");
-        Assertions.assertThat(semaphore.availablePermits()).isEqualTo(3);
+        BuildSerializer serializer = (BuildSerializer) ReflectionTestUtils.getField(buildPipelineService, "buildSerializer");
+        Assertions.assertThat(serializer.isBusy()).isFalse();
     }
 }

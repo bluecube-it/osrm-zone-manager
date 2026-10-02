@@ -1,6 +1,8 @@
 package it.bluecube.osrmzonemanager.global;
 
 import it.bluecube.osrmzonemanager.OsrmZoneManagerConfig;
+import it.bluecube.osrmzonemanager.builder.BuildException;
+import it.bluecube.osrmzonemanager.builder.BuildSerializer;
 import it.bluecube.osrmzonemanager.builder.OsrmCommandRunner;
 import it.bluecube.osrmzonemanager.maps.MapsService;
 import it.bluecube.osrmzonemanager.runtime.OsrmMapFingerprint;
@@ -36,6 +38,10 @@ import java.util.concurrent.Executor;
  *
  * <p>Requests are served by {@code /osrm/{profile}/**}; until a profile reaches
  * {@link GlobalOsrmStatus#READY} (or {@link GlobalOsrmStatus#DEGRADED}) those requests get HTTP 503.
+ *
+ * <p>Whole-map preprocessing is memory-hungry — the whole-Italy extract peaks around 15 GB — so every
+ * profile build takes the single, shared {@link BuildSerializer} slot and never runs next to a zone
+ * build.
  */
 @Slf4j
 @Service
@@ -55,6 +61,7 @@ public class GlobalOsrmService implements ApplicationRunner {
     private final OsrmZoneManagerConfig config;
     private final MapsService mapsService;
     private final OsrmCommandRunner commandRunner;
+    private final BuildSerializer buildSerializer;
     private final OsrmProcessLauncher launcher;
     private final OsrmMapFingerprint mapFingerprint;
     private final PortAllocatorService portAllocator;
@@ -81,8 +88,10 @@ public class GlobalOsrmService implements ApplicationRunner {
 
     /**
      * Builds (when needed) and starts one instance per profile, sequentially — whole-map
-     * preprocessing is memory-hungry, so profiles are not built in parallel. Every profile is
-     * registered up-front as {@link GlobalOsrmStatus#PENDING} so {@code GET /osrm} lists a stable set.
+     * preprocessing is memory-hungry, so profiles are not built in parallel, and the shared
+     * {@link BuildSerializer} keeps them from overlapping with zone builds as well.
+     * Every profile is registered up-front as {@link GlobalOsrmStatus#PENDING} so {@code GET /osrm}
+     * lists a stable set.
      */
     void startAll() {
         Path basePbf;
@@ -144,15 +153,25 @@ public class GlobalOsrmService implements ApplicationRunner {
         log.info("Global OSRM {}: building whole-map graph from {} into {} (timeout {}s per stage)",
                 profile.name(), basePbf, dir, config.getGlobalBuildTimeoutSeconds());
 
-        int timeout = config.getGlobalBuildTimeoutSeconds();
-        Path mapOutput = dir.resolve(FILE_OSRM_MAP_BASE);
-        commandRunner.run(List.of(
-                BINARY_OSRM_EXTRACT, FLAG_EXTRACT, commandRunner.profileLuaPath(profile),
-                FLAG_OUTPUT, mapOutput.toString(), basePbf.toString()
-        ), dir.toFile(), timeout);
-        commandRunner.run(List.of(BINARY_OSRM_PARTITION, MAP_OSRM), dir.toFile(), timeout);
-        commandRunner.run(List.of(BINARY_OSRM_CUSTOMIZE, MAP_OSRM), dir.toFile(), timeout);
-        mapFingerprint.write(dir, pbfFingerprint);
+        try {
+            buildSerializer.acquireGlobal();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BuildException("interrupted while waiting for the build slot", e);
+        }
+        try {
+            int timeout = config.getGlobalBuildTimeoutSeconds();
+            Path mapOutput = dir.resolve(FILE_OSRM_MAP_BASE);
+            commandRunner.run(List.of(
+                    BINARY_OSRM_EXTRACT, FLAG_EXTRACT, commandRunner.profileLuaPath(profile),
+                    FLAG_OUTPUT, mapOutput.toString(), basePbf.toString()
+            ), dir.toFile(), timeout);
+            commandRunner.run(List.of(BINARY_OSRM_PARTITION, MAP_OSRM), dir.toFile(), timeout);
+            commandRunner.run(List.of(BINARY_OSRM_CUSTOMIZE, MAP_OSRM), dir.toFile(), timeout);
+            mapFingerprint.write(dir, pbfFingerprint);
+        } finally {
+            buildSerializer.release();
+        }
         log.info("Global OSRM {}: whole-map graph built", profile.name());
     }
 

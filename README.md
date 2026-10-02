@@ -73,6 +73,11 @@ curl http://localhost:8080/osrm                                              # s
 - The build (`osrm-extract` → `osrm-partition` → `osrm-customize`) runs asynchronously at startup, one profile after
   the other, with a per-stage timeout of `GLOBAL_BUILD_TIMEOUT_SECONDS` (default 7200). Whole-Italy graphs need several
   GB of disk and a long first boot; readiness of the container is not blocked by it.
+- **All builds share one slot**: zone builds and whole-map builds never run at the same time, because a single
+  `osrm-extract` already peaks at roughly 6–7× the size of its input PBF (≈15 GB for the whole of Italy) and two
+  concurrent runs OOM-kill a 16 GB host. Builds that find the slot taken *wait* — they queue, they do not fail — and
+  zone builds take precedence over whole-map ones, so creating a zone cannot be starved by a running profile
+  rebuild.
 - Requests for a profile that is `PENDING`/`BUILDING`/`STARTING`, has `FAILED`, or is unknown get HTTP 503 (unknown
   profile names get HTTP 400). `DEGRADED` profiles still serve traffic.
 - Radiuses are injected exactly like in the zone proxy (`OSRM_DEFAULT_RADIUS`, header `x-osrm-radius`).

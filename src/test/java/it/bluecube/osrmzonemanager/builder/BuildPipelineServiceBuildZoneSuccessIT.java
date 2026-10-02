@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Semaphore;
 
 class BuildPipelineServiceBuildZoneSuccessIT extends BaseIT {
 
@@ -139,7 +138,7 @@ class BuildPipelineServiceBuildZoneSuccessIT extends BaseIT {
         Assertions.assertThat(updated).isPresent();
         Assertions.assertThat(updated.get().getStatus()).isEqualTo(ZoneStatus.BUILT.name());
 
-        Semaphore semaphore = (Semaphore) ReflectionTestUtils.getField(spyBuildPipelineService, "buildSlots");
-        Assertions.assertThat(semaphore.availablePermits()).isEqualTo(3);
+        BuildSerializer serializer = (BuildSerializer) ReflectionTestUtils.getField(spyBuildPipelineService, "buildSerializer");
+        Assertions.assertThat(serializer.isBusy()).isFalse();
     }
 }
