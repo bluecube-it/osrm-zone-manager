@@ -83,6 +83,34 @@ curl http://localhost:8080/osrm                                              # s
 - Radiuses are injected exactly like in the zone proxy (`OSRM_DEFAULT_RADIUS`, header `x-osrm-radius`).
 - Set `GLOBAL_OSRM_ENABLED=false` to skip global instances entirely (zone-only operation).
 
+## Base map refresh
+
+Both zone graphs and whole-map graphs carry a `map.fingerprint` sidecar recording the OSRM version and the base PBF
+mtime. It is compared against the running image with `OsrmMapFingerprint.isUsable` — complete `map.osrm.*` set **and**
+matching marker — and a mismatch means *rebuild*, because a graph built by another OSRM release or another dataset
+cannot be loaded at all. The same rule applies to the zone directories and to `/data/global/<profile>`.
+
+- **Refreshing the base map means replacing the PBF and restarting the JVM.** Detection (PBF mtime vs marker) and the
+  rebuild trigger (boot) are the two halves of the same mechanism: there is no file watcher and no refresh endpoint.
+- On boot `BootRecoveryService` starts the zones whose map is still loadable and rebuilds every other one from the
+  polygon/lineStrings stored in the registry — `FAILED` zones included (self-heal; the failure was often just a stale
+  map). A zone with no stored polygon is marked `FAILED` instead. Deleted zones leave no registry row, so they are
+  never recovered.
+- On boot `GlobalOsrmService` runs the same check per profile and rebuilds the whole-map graph when it is stale.
+- Replacing the PBF while the JVM runs does nothing: the marker is only read at boot, active zones keep serving their
+  existing graph, and a zone that has to be started in the meantime is marked `FAILED` with
+  *'map artifacts missing or stale — rebuild required'* rather than burning the full start timeout on an unloadable
+  map. The rebuild happens at the next restart.
+- The fingerprint is the PBF **mtime**, not its content: a PBF copied with preserved timestamps (`cp -p`, `touch -r`)
+  leaves the marker unchanged and triggers no rebuild.
+- `/data` is ephemeral in the documented deployment, so a container restart wipes the graphs and rebuilds everything
+  from the registry anyway — with or without a new PBF.
+- After a PBF swap the registry's `base_pbf_mtime` column is not rewritten by the boot rebuild (it is only set when the
+  zone is created), so the first `POST /zones` reusing that polygon sees stale content and schedules one redundant
+  rebuild; the write afterwards realigns the column.
+- Rebuilds are serialized on the single `BuildSerializer` slot with zone builds taking precedence, so refreshing a
+  whole-Italy PBF rebuilds every zone and both profiles one after the other and can take hours.
+
 ## Profiles
 
 OSRM bakes the routing profile into the preprocessed graph, so a profile cannot be selected at
@@ -136,6 +164,7 @@ Storage layout:
     - `/data/global/<profile>/` — whole-map `map.osrm.*` + `map.fingerprint` marker
 - On boot: reads PostgreSQL registry → starts the zones whose map is still loadable, rebuilds the others (including
   `FAILED` ones) from the stored polygon/lineStrings; then builds/starts the global whole-map instances
+  (see [Base map refresh](#base-map-refresh))
 - Map fingerprint: a map produced by a different OSRM release cannot be loaded (`osrm_fingerprint.meta` error), so
   bumping the OSRM version in the image invalidates every zone and global map and triggers an automatic rebuild
 
