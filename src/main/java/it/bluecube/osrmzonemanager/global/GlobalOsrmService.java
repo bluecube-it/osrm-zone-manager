@@ -134,11 +134,11 @@ public class GlobalOsrmService implements ApplicationRunner {
      * Builds the whole-map graph for a profile when the artifacts are missing or stale (different
      * OSRM version or replaced base PBF).
      *
-     * @param dir             profile graph directory
-     * @param profile         routing profile
-     * @param basePbf         whole-map source PBF
-     * @param pbfFingerprint  identity of the base PBF
-     * @param instance        tracking state, updated with the {@link GlobalOsrmStatus#BUILDING} status
+     * @param dir            profile graph directory
+     * @param profile        routing profile
+     * @param basePbf        whole-map source PBF
+     * @param pbfFingerprint identity of the base PBF
+     * @param instance       tracking state, updated with the {@link GlobalOsrmStatus#BUILDING} status
      * @throws IOException on graph directory/file access failure
      */
     private void ensureMap(Path dir, ZoneProfile profile, Path basePbf, String pbfFingerprint,

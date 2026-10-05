@@ -29,6 +29,10 @@ import java.util.function.Consumer;
 
 class GlobalOsrmServiceTest extends BaseUnitTest {
 
+    private final GlobalOsrmRegistry registry = new GlobalOsrmRegistry();
+    private final OsrmMapFingerprint mapFingerprint = new OsrmMapFingerprint();
+    private final Executor executor = Runnable::run;
+    private final AtomicInteger portSequence = new AtomicInteger(5000);
     @Mock
     private OsrmZoneManagerConfig config;
     @Mock
@@ -39,12 +43,6 @@ class GlobalOsrmServiceTest extends BaseUnitTest {
     private OsrmProcessLauncher launcher;
     @Mock
     private PortAllocatorService portAllocator;
-
-    private final GlobalOsrmRegistry registry = new GlobalOsrmRegistry();
-    private final OsrmMapFingerprint mapFingerprint = new OsrmMapFingerprint();
-    private final Executor executor = Runnable::run;
-    private final AtomicInteger portSequence = new AtomicInteger(5000);
-
     private Path globalDir;
     private Path basePbf;
     private GlobalOsrmService service;

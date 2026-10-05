@@ -14,6 +14,58 @@ class BuildSerializerTest {
 
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
+    private static Thread zoneBuild(BuildSerializer serializer, String id, List<String> events,
+                                    CountDownLatch inside, CountDownLatch mayExit) {
+        return new Thread(() -> run(serializer, id, events, inside, mayExit, true), id);
+    }
+
+    private static Thread globalBuild(BuildSerializer serializer, String id, List<String> events) {
+        return new Thread(() -> run(serializer, id, events, new CountDownLatch(0), new CountDownLatch(0), false), id);
+    }
+
+    private static void run(BuildSerializer serializer, String id, List<String> events,
+                            CountDownLatch inside, CountDownLatch mayExit, boolean zone) {
+        try {
+            if (zone) {
+                serializer.acquireZone();
+            } else {
+                serializer.acquireGlobal();
+            }
+            try {
+                events.add(id + ":start");
+                inside.countDown();
+                mayExit.await();
+                events.add(id + ":end");
+            } finally {
+                serializer.release();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static boolean awaitLatch(CountDownLatch latch) throws InterruptedException {
+        return latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private static void awaitQueue(BuildSerializer serializer, int zoneQueued, int globalQueued) {
+        long deadline = System.nanoTime() + TIMEOUT.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (serializer.queuedZoneBuilds() == zoneQueued && serializer.queuedGlobalBuilds() == globalQueued) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        Assertions.fail("build queue never reached zone=%d global=%d".formatted(zoneQueued, globalQueued));
+    }
+
+    private static void join(Thread... threads) throws InterruptedException {
+        for (Thread thread : threads) {
+            thread.join(TIMEOUT.toMillis());
+            Assertions.assertThat(thread.isAlive()).isFalse();
+        }
+    }
+
     @Test
     void shouldRunOneBuildAtATime() throws Exception {
         BuildSerializer serializer = new BuildSerializer();
@@ -101,57 +153,5 @@ class BuildSerializerTest {
         Assertions.assertThat(serializer.isBusy()).isFalse();
         Assertions.assertThat(serializer.queuedZoneBuilds()).isZero();
         Assertions.assertThat(serializer.queuedGlobalBuilds()).isZero();
-    }
-
-    private static Thread zoneBuild(BuildSerializer serializer, String id, List<String> events,
-                                    CountDownLatch inside, CountDownLatch mayExit) {
-        return new Thread(() -> run(serializer, id, events, inside, mayExit, true), id);
-    }
-
-    private static Thread globalBuild(BuildSerializer serializer, String id, List<String> events) {
-        return new Thread(() -> run(serializer, id, events, new CountDownLatch(0), new CountDownLatch(0), false), id);
-    }
-
-    private static void run(BuildSerializer serializer, String id, List<String> events,
-                            CountDownLatch inside, CountDownLatch mayExit, boolean zone) {
-        try {
-            if (zone) {
-                serializer.acquireZone();
-            } else {
-                serializer.acquireGlobal();
-            }
-            try {
-                events.add(id + ":start");
-                inside.countDown();
-                mayExit.await();
-                events.add(id + ":end");
-            } finally {
-                serializer.release();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static boolean awaitLatch(CountDownLatch latch) throws InterruptedException {
-        return latch.await(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-    }
-
-    private static void awaitQueue(BuildSerializer serializer, int zoneQueued, int globalQueued) {
-        long deadline = System.nanoTime() + TIMEOUT.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (serializer.queuedZoneBuilds() == zoneQueued && serializer.queuedGlobalBuilds() == globalQueued) {
-                return;
-            }
-            Thread.onSpinWait();
-        }
-        Assertions.fail("build queue never reached zone=%d global=%d".formatted(zoneQueued, globalQueued));
-    }
-
-    private static void join(Thread... threads) throws InterruptedException {
-        for (Thread thread : threads) {
-            thread.join(TIMEOUT.toMillis());
-            Assertions.assertThat(thread.isAlive()).isFalse();
-        }
     }
 }

@@ -98,8 +98,8 @@ cannot be loaded at all. The same rule applies to the zone directories and to `/
   never recovered.
 - On boot `GlobalOsrmService` runs the same check per profile and rebuilds the whole-map graph when it is stale.
 - Replacing the PBF while the JVM runs does nothing: the marker is only read at boot, active zones keep serving their
-  existing graph, and a zone that has to be started in the meantime is marked `FAILED` with
-  *'map artifacts missing or stale — rebuild required'* rather than burning the full start timeout on an unloadable
+  existing graph, and a zone that has to be started in the meantime is marked `FAILED` with *'map artifacts missing or
+  stale — rebuild required'* rather than burning the full start timeout on an unloadable
   map. The rebuild happens at the next restart.
 - The fingerprint is the PBF **mtime**, not its content: a PBF copied with preserved timestamps (`cp -p`, `touch -r`)
   leaves the marker unchanged and triggers no rebuild.
@@ -133,9 +133,10 @@ curl -X POST http://localhost:8080/zones \
   the OSRM URL is ignored by OSRM and by the gateway. For whole-map routing use `/osrm/:profile/*`,
   where the profile segment *is* meaningful (see [Global profiles](#global-profiles-whole-map)).
 - VROOM requests run in-process: the gateway spawns the shared `vroom` binary per request, registering the
-  zone's OSRM instance under the profile name derived from the zone profile (`car` / `bus`; `car` is kept as an
-  alias because VROOM defaults vehicles without an explicit `profile` to `car`). No per-zone node process and no
-  per-zone VROOM port are involved.
+  zone's OSRM instance under the lower-case profile name derived from the zone profile (`car` / `bus`, no alias: the
+  zone profile and the solving profile must match). Vehicles carrying an upper-case `profile` (e.g. `CAR`) are
+  lower-cased before the payload reaches the binary, so clients can keep the profile upper-case on their side. No
+  per-zone node process and no per-zone VROOM port are involved.
 
 ## Architecture
 

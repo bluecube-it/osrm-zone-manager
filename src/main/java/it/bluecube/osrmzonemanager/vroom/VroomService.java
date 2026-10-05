@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -82,7 +84,44 @@ public class VroomService {
     }
 
     /**
+     * Lower-cases the {@code profile} of every vehicle so the payload matches the lower-case routing
+     * server names registered for the zone ({@code -a car:...} / {@code -a bus:...}). VROOM compares the
+     * vehicle profile verbatim, so an upper-case name coming from a client (e.g. {@code CAR}) would be
+     * rejected as an unknown profile even when it matches the zone profile.
+     *
+     * @param objectMapper mapper used to re-serialize the payload
+     * @param body         parsed request payload
+     * @return the re-serialized payload when at least one profile was normalised, {@code null} otherwise
+     */
+    static byte[] lowerCaseVehicleProfiles(ObjectMapper objectMapper, JsonNode body) {
+        JsonNode vehicles = body.path("vehicles");
+        if (!vehicles.isArray()) {
+            return null;
+        }
+        boolean changed = false;
+        for (JsonNode vehicle : vehicles) {
+            if (!(vehicle instanceof ObjectNode objectNode)) {
+                continue;
+            }
+            JsonNode profile = objectNode.path("profile");
+            if (!profile.isString()) {
+                continue;
+            }
+            String raw = profile.asText();
+            String normalised = raw.trim().toLowerCase(Locale.ROOT);
+            if (!normalised.equals(raw)) {
+                objectNode.put("profile", normalised);
+                changed = true;
+            }
+        }
+        return changed ? objectMapper.writeValueAsBytes(body) : null;
+    }
+
+    /**
      * Solves a VROOM request for the given zone by spawning the {@code vroom} binary.
+     *
+     * <p>Vehicle profiles are lower-cased before the payload is piped to the binary, so clients may
+     * carry the profile in any case (the zone identity itself stays upper-case).
      *
      * @param zoneId zone identifier
      * @param body   raw request body, piped to the binary's stdin
@@ -94,10 +133,11 @@ public class VroomService {
         JsonNode json = parse(payload);
         requestValidator.validate(json);
         VroomOptions options = optionsResolver.resolve(json);
+        byte[] vroomPayload = lowerCaseVehicleProfiles(objectMapper, json);
 
         List<String> command = commandBuilder.build(zone.profile(), requireOsrmPort(zone), options);
         log.debug("Zone {}: solving with {}", zoneId, String.join(" ", command));
-        return run(zoneId, command, payload, false);
+        return run(zoneId, command, vroomPayload != null ? vroomPayload : payload, false);
     }
 
     /**

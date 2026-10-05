@@ -17,7 +17,8 @@ import java.util.Set;
  * {@code osrm.zone-manager.vroom-override} ({@code c}, {@code g}, {@code l}, {@code t}, {@code x} by default).
  *
  * <p>Mirrors the {@code override} handling of {@code vroom-express}: unknown or non-allowed keys are
- * silently ignored, as are non-numeric values for numeric options.
+ * silently ignored, while an allowed key carrying an unexpected type is ignored with a warning (the
+ * configured default wins).
  */
 @Slf4j
 @Component
@@ -48,20 +49,20 @@ public class VroomOptionsResolver {
 
         JsonNode options = body.path("options");
         if (options.isObject()) {
-            if (allowed.contains("g") && options.path("g").isBoolean()) {
-                geometry = options.path("g").asBoolean();
+            if (allowed.contains("g")) {
+                geometry = booleanOption(options, "g", geometry);
             }
-            if (allowed.contains("c") && options.path("c").isBoolean()) {
-                chooseEta = options.path("c").asBoolean();
+            if (allowed.contains("c")) {
+                chooseEta = booleanOption(options, "c", chooseEta);
             }
-            if (allowed.contains("t") && options.path("t").isIntegralNumber()) {
-                threads = options.path("t").asInt();
+            if (allowed.contains("t")) {
+                threads = intOption(options, "t", threads);
             }
-            if (allowed.contains("x") && options.path("x").isIntegralNumber()) {
-                explore = options.path("x").asInt();
+            if (allowed.contains("x")) {
+                explore = intOption(options, "x", explore);
             }
-            if (allowed.contains("l") && options.path("l").isIntegralNumber()) {
-                limitSeconds = options.path("l").asInt();
+            if (allowed.contains("l")) {
+                limitSeconds = intOption(options, "l", limitSeconds);
             }
         }
 
@@ -96,5 +97,47 @@ public class VroomOptionsResolver {
             return fallback;
         }
         return requested;
+    }
+
+    /**
+     * Reads a boolean option, ignoring values of any other type with a warning.
+     *
+     * @param options options object from the request
+     * @param key     option key ({@code g} or {@code c})
+     * @param current configured default, used when the option is absent or mistyped
+     * @return the requested value, or {@code current}
+     */
+    private boolean booleanOption(JsonNode options, String key, boolean current) {
+        JsonNode value = options.path(key);
+        if (value.isMissingNode() || value.isNull()) {
+            return current;
+        }
+        if (!value.isBoolean()) {
+            log.warn("Ignoring VROOM option '{}' with unexpected type (expected boolean, got {}), keeping {}",
+                    key, value, current);
+            return current;
+        }
+        return value.asBoolean();
+    }
+
+    /**
+     * Reads an integer option, ignoring values of any other type with a warning.
+     *
+     * @param options options object from the request
+     * @param key     option key ({@code t}, {@code x} or {@code l})
+     * @param current configured default, used when the option is absent or mistyped
+     * @return the requested value, or {@code current}
+     */
+    private int intOption(JsonNode options, String key, int current) {
+        JsonNode value = options.path(key);
+        if (value.isMissingNode() || value.isNull()) {
+            return current;
+        }
+        if (!value.isIntegralNumber()) {
+            log.warn("Ignoring VROOM option '{}' with unexpected type (expected integer, got {}), keeping {}",
+                    key, value, current);
+            return current;
+        }
+        return value.asInt();
     }
 }

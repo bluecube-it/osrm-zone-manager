@@ -35,12 +35,14 @@ class VroomCommandBuilderTest extends BaseUnitTest {
     }
 
     @Test
-    void busZoneRegistersBusProfileAndCarAlias() {
+    void busZoneRegistersOnlyBusProfile() {
         List<String> command = builder.build(ZoneProfile.BUS, 5100,
                 new VroomOptions(4, 5, false, false, 0));
 
-        Assertions.assertThat(command).containsSubsequence("-a", "car:127.0.0.1", "-p", "car:5100");
-        Assertions.assertThat(command).containsSubsequence("-a", "bus:127.0.0.1", "-p", "bus:5100");
+        Assertions.assertThat(command).containsExactly(
+                "vroom", "-r", "osrm",
+                "-a", "bus:127.0.0.1", "-p", "bus:5100",
+                "-t", "4", "-x", "5");
     }
 
     @Test

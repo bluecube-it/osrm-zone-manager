@@ -14,8 +14,9 @@ import java.util.Locale;
  *
  * <p>The routing server is bound per zone: the zone's OSRM instance is registered under the
  * VROOM profile name derived from the zone's persisted {@link ZoneProfile} ({@code car} / {@code bus}).
- * Because VROOM defaults an unset vehicle {@code profile} to {@code car}, the {@code car} name is
- * always registered as an alias for backward compatibility with clients that omit the profile.
+ * Only that profile is registered: clients must send the matching profile on their vehicles, so the
+ * zone profile and the solving profile can never diverge. The name is lower-cased here because VROOM
+ * compares the profile carried by each vehicle verbatim against the {@code -a} names.
  *
  * <p>Input is read from stdin (no {@code -i} flag) — VROOM consumes stdin when no input file or
  * positional argument is given, which removes the temporary JSON file that {@code vroom-express}
@@ -25,28 +26,20 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class VroomCommandBuilder {
 
-    private static final String DEFAULT_VROOM_PROFILE = "car";
     private static final String ROUTER_OSRM = "osrm";
     private static final String LOCALHOST = "127.0.0.1";
 
     private final OsrmZoneManagerConfig config;
 
     /**
-     * Maps a zone profile to the VROOM routing-server names to register.
-     *
-     * <p>{@code car} is always included: VROOM defaults to that profile name for vehicles without an
-     * explicit {@code profile} key, and zones built before profiles existed only ever exposed {@code car}.
+     * Maps a zone profile to the VROOM routing-server name to register.
      *
      * @param profile zone routing profile ({@code null} is treated as {@link ZoneProfile#CAR})
-     * @return profile names, {@code car} first
+     * @return the single lower-case profile name registered for the zone
      */
     static List<String> vroomProfileNames(ZoneProfile profile) {
         ZoneProfile resolved = profile == null ? ZoneProfile.CAR : profile;
-        String name = resolved.name().toLowerCase(Locale.ROOT);
-        if (DEFAULT_VROOM_PROFILE.equals(name)) {
-            return List.of(DEFAULT_VROOM_PROFILE);
-        }
-        return List.of(DEFAULT_VROOM_PROFILE, name);
+        return List.of(resolved.name().toLowerCase(Locale.ROOT));
     }
 
     /**

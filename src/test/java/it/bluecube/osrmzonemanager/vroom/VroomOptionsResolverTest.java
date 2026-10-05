@@ -62,6 +62,22 @@ class VroomOptionsResolverTest extends BaseUnitTest {
     }
 
     @Test
+    void ignoresNonBooleanValuesForBooleanOptions() {
+        VroomOptions options = resolver.resolve(json("""
+                {"jobs":[],"vehicles":[],"options":{"g":"true","c":1}}"""));
+
+        Assertions.assertThat(options).isEqualTo(new VroomOptions(4, 5, false, false, 0));
+    }
+
+    @Test
+    void ignoresNullBooleanOptions() {
+        VroomOptions options = resolver.resolve(json("""
+                {"jobs":[],"vehicles":[],"options":{"g":null,"c":null}}"""));
+
+        Assertions.assertThat(options).isEqualTo(new VroomOptions(4, 5, false, false, 0));
+    }
+
+    @Test
     void negativeValuesFallBackToDefaults() {
         VroomOptions options = resolver.resolve(json("""
                 {"jobs":[],"vehicles":[],"options":{"t":-3,"x":-1,"l":-5}}"""));
